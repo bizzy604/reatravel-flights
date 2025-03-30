@@ -10,6 +10,10 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  output: 'standalone',
+  experimental: {
+    serverActions: true,
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

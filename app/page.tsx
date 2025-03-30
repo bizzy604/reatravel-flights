@@ -49,7 +49,7 @@ export default function HomePage() {
           <div className="container relative z-10 py-24 md:py-32">
             <div className="mx-auto max-w-4xl text-center">
               <h1 className="mb-6 text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
-                Discover the World with SkyWay
+                Discover the World with Rea Travel
               </h1>
               <p className="mb-10 text-xl text-white/90">
                 Find and book the best deals on flights to your dream destinations

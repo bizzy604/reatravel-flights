@@ -5,8 +5,8 @@ import { AdminApiSettings } from "@/components/admin/admin-api-settings"
 import { AdminUserManagement } from "@/components/admin/admin-user-management"
 
 export const metadata: Metadata = {
-  title: "SkyWay Admin - Settings",
-  description: "Admin settings for SkyWay flight booking portal",
+  title: "Rea Travel Admin - Settings",
+  description: "Admin dashboard for Rea Travel flight booking portal",
 }
 
 export default function AdminSettingsPage() {

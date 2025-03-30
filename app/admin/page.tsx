@@ -5,8 +5,8 @@ import { SystemStatus } from "@/components/admin/system-status"
 import { AdminTools } from "@/components/admin/admin-tools"
 
 export const metadata: Metadata = {
-  title: "SkyWay Admin - Dashboard",
-  description: "Admin dashboard for SkyWay flight booking portal",
+  title: "Rea Travel Admin - Dashboard",
+  description: "Admin dashboard for Rea Travel flight booking portal",
 }
 
 export default function AdminDashboardPage() {

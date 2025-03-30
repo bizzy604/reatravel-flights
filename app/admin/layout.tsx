@@ -4,8 +4,8 @@ import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { AdminHeader } from "@/components/admin/admin-header"
 
 export const metadata: Metadata = {
-  title: "SkyWay Admin - Dashboard",
-  description: "Admin dashboard for SkyWay flight booking portal",
+  title: "Rea Travel Agency Admin - Dashboard",
+  description: "Admin dashboard for Rea Travel flight booking portal",
 }
 
 export default function AdminLayout({

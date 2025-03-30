@@ -5,14 +5,21 @@ import { Footer } from "@/components/footer"
 
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { ClerkProvider } from '@clerk/nextjs'
+import {
+  ClerkProvider,
+  SignInButton,
+  SignUpButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from '@clerk/nextjs'
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "SkyWay - Flight Booking Portal",
+  title: "Rea Travel - Flight Booking Portal",
   description: "Book your flights with ease and find the best deals",
-    generator: 'v0.dev'
+    generator: 'Amoni Kevin'
 }
 
 export default function RootLayout({

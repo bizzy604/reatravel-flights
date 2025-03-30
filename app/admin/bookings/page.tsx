@@ -3,8 +3,8 @@ import { BookingsTable } from "@/components/admin/bookings-table"
 import { BookingsFilter } from "@/components/admin/bookings-filter"
 
 export const metadata: Metadata = {
-  title: "SkyWay Admin - Bookings",
-  description: "Manage bookings in the SkyWay admin portal",
+  title: "Rea Travel Admin - Bookings",
+  description: "Admin dashboard for Rea Travel flight booking portal",
 }
 
 export default function AdminBookingsPage() {

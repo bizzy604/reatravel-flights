@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
@@ -118,13 +118,6 @@ export default function PaymentPage() {
   const [paymentStatus, setPaymentStatus] = useState<"pending" | "processing" | "success" | "error">("pending")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    // If user is not authenticated, redirect to sign-in
-    if (isLoaded && !user) {
-      router.push(`/sign-in?redirect_url=${encodeURIComponent(`/flights/${flightId}/payment`)}`)
-    }
-  }, [isLoaded, user, router, flightId])
 
   const handlePaymentSubmit = async () => {
     setIsLoading(true)

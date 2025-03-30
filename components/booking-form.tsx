@@ -25,6 +25,7 @@ export function BookingForm() {
   const { isSignedIn } = useAuth()
   const [currentStep, setCurrentStep] = useState(1)
   const [passengerCount, setPassengerCount] = useState(1)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const steps = [
     { id: 1, name: "Passenger Details" },
@@ -45,15 +46,16 @@ export function BookingForm() {
     }
   }
 
-  const handleContinueToPayment = () => {
-    const flightId = pathname.split("/")[2]
-
-    if (isSignedIn) {
+  const handleContinueToPayment = async () => {
+    try {
+      setIsSubmitting(true)
+      const flightId = pathname.split("/")[2]
+      // Remove auth check here since middleware will handle it
       router.push(`/flights/${flightId}/payment`)
-    } else {
-      // Store the redirect URL in session storage
-      const redirectUrl = `/flights/${flightId}/payment`
-      router.push(`/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`)
+    } catch (error) {
+      console.error('Navigation error:', error)
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -388,8 +390,12 @@ export function BookingForm() {
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             ) : (
-              <Button onClick={handleContinueToPayment} aria-label="Continue to payment page">
-                Continue to Payment
+              <Button 
+                onClick={handleContinueToPayment} 
+                disabled={isSubmitting}
+                aria-label="Continue to payment page"
+              >
+                {isSubmitting ? "Processing..." : "Continue to Payment"}
                 <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             )}
