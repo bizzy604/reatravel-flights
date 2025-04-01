@@ -239,4 +239,3 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
     </div>
   )
 }
-

@@ -1,106 +1,69 @@
 "use client"
 
+import { useState } from "react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { Bell, LogOut, Menu, Settings, User } from "lucide-react"
+import Image from "next/image"
+import { Menu, Bell, Search } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
-import { ThemeToggle } from "@/components/theme-toggle"
 
 export function AdminHeader() {
-  const pathname = usePathname()
+  const [isSearchOpen, setIsSearchOpen] = useState(false)
 
   return (
-    <header className="sticky top-0 z-50 flex h-16 items-center border-b bg-background px-4 md:px-6">
-      <div className="flex items-center gap-2 md:hidden">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="flex h-16 items-center px-4 md:px-6">
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="md:hidden">
+            <Button variant="outline" size="icon" className="mr-2 md:hidden">
               <Menu className="h-5 w-5" />
-              <span className="sr-only">Toggle menu</span>
+              <span className="sr-only">Toggle Menu</span>
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[240px] sm:w-[300px]">
+          <SheetContent side="left" className="pr-0 sm:max-w-xs">
             <AdminSidebar />
           </SheetContent>
         </Sheet>
-        <Link href="/admin" className="font-bold">
-          SkyWay Admin
+        <Link href="/admin" className="mr-6 flex items-center gap-2">
+          <Image src="/placeholder.svg?height=32&width=32" alt="SkyWay Logo" width={32} height={32} />
+          <span className="text-xl font-bold">SkyWay Admin</span>
         </Link>
+        <div className="relative hidden md:flex md:grow">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input type="search" placeholder="Search..." className="w-full max-w-sm pl-8" />
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSearchOpen(!isSearchOpen)}>
+            <Search className="h-5 w-5" />
+            <span className="sr-only">Search</span>
+          </Button>
+          <Button variant="ghost" size="icon">
+            <Bell className="h-5 w-5" />
+            <span className="sr-only">Notifications</span>
+          </Button>
+          <Button variant="ghost" size="icon" className="rounded-full">
+            <Image
+              src="/placeholder.svg?height=32&width=32"
+              alt="Avatar"
+              width={32}
+              height={32}
+              className="rounded-full"
+            />
+            <span className="sr-only">Profile</span>
+          </Button>
+        </div>
       </div>
-
-      <div className="hidden md:flex md:items-center md:gap-2">
-        <Link href="/admin" className="font-bold">
-          SkyWay Admin
-        </Link>
-        <nav className="flex items-center space-x-4 lg:space-x-6 mx-6">
-          <Link
-            href="/admin"
-            className={`text-sm font-medium transition-colors hover:text-primary ${
-              pathname === "/admin" ? "text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            Dashboard
-          </Link>
-          <Link
-            href="/admin/bookings"
-            className={`text-sm font-medium transition-colors hover:text-primary ${
-              pathname === "/admin/bookings" ? "text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            Bookings
-          </Link>
-          <Link
-            href="/admin/settings"
-            className={`text-sm font-medium transition-colors hover:text-primary ${
-              pathname === "/admin/settings" ? "text-foreground" : "text-muted-foreground"
-            }`}
-          >
-            Settings
-          </Link>
-        </nav>
-      </div>
-
-      <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle />
-        <Button variant="ghost" size="icon" aria-label="Notifications">
-          <Bell className="h-5 w-5" />
-        </Button>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full">
-              <User className="h-5 w-5" />
-              <span className="sr-only">User menu</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Admin User</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <User className="mr-2 h-4 w-4" />
-              <span>Profile</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Settings</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <LogOut className="mr-2 h-4 w-4" />
-              <span>Log out</span>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+      {isSearchOpen && (
+        <div className="border-t p-4 md:hidden">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input type="search" placeholder="Search..." className="w-full pl-8" />
+          </div>
+        </div>
+      )}
     </header>
   )
 }

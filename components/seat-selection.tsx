@@ -15,7 +15,11 @@ const seatMap = {
   exitRowSeats: ["15A", "15B", "15C", "16D", "16E", "16F"],
 }
 
-export function SeatSelection() {
+interface SeatSelectionProps {
+  onSeatSelect?: (seat: string) => void
+}
+
+export function SeatSelection({ onSeatSelect }: SeatSelectionProps) {
   const [selectedSeat, setSelectedSeat] = useState<string | null>(null)
 
   const isSeatAvailable = (seat: string) => {
@@ -39,6 +43,12 @@ export function SeatSelection() {
   const handleSeatSelect = (seat: string) => {
     if (isSeatAvailable(seat)) {
       setSelectedSeat(seat)
+
+      // Call the onSeatSelect callback with the selected seat
+      if (onSeatSelect) {
+        const seatType = isSeatPremium(seat) ? "Premium" : isSeatExitRow(seat) ? "Exit Row" : "Standard"
+        onSeatSelect(`${seat} (${seatType})`)
+      }
     }
   }
 
@@ -135,7 +145,14 @@ export function SeatSelection() {
             </p>
           </div>
           {selectedSeat && (
-            <Button variant="outline" size="sm" onClick={() => setSelectedSeat(null)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelectedSeat(null)
+                if (onSeatSelect) onSeatSelect("")
+              }}
+            >
               Change
             </Button>
           )}

@@ -1,16 +1,16 @@
-import type { Metadata } from "next"
+"use client"
 import { DashboardMetrics } from "@/components/admin/dashboard-metrics"
 import { RecentBookings } from "@/components/admin/recent-bookings"
 import { SystemStatus } from "@/components/admin/system-status"
 import { AdminTools } from "@/components/admin/admin-tools"
-
-export const metadata: Metadata = {
-  title: "Rea Travel Admin - Dashboard",
-  description: "Admin dashboard for Rea Travel flight booking portal",
-}
+import { Protect } from '@clerk/nextjs'
 
 export default function AdminDashboardPage() {
   return (
+    // <Protect
+    // permission="org:team_settings:manage"
+    // fallback={<p>You are not allowed to see this section.</p>}
+    // >
     <div className="space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>

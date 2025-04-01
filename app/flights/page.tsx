@@ -1,4 +1,6 @@
-import { Suspense } from "react"
+'use client'
+
+import { Suspense, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { ChevronLeft, ChevronRight, Filter } from "lucide-react"
@@ -180,7 +182,35 @@ const mockFlights = [
   },
 ]
 
+interface FlightFiltersState {
+  priceRange: [number, number]
+  airlines: string[]
+  stops: number[]
+  departureTime: string[]
+}
+
+const initialFilters: FlightFiltersState = {
+  priceRange: [0, 1000],
+  airlines: [],
+  stops: [],
+  departureTime: []
+}
+
 export default function FlightsPage() {
+  const [filters, setFilters] = useState<FlightFiltersState>(initialFilters)
+  const [sortOption, setSortOption] = useState('price_low')
+
+  const handleFilterChange = (newFilters: Partial<FlightFiltersState>) => {
+    setFilters(prev => ({
+      ...prev,
+      ...newFilters
+    }))
+  }
+
+  const handleResetFilters = () => {
+    setFilters(initialFilters)
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -222,7 +252,12 @@ export default function FlightsPage() {
               <div className="sticky top-24 rounded-lg border p-4">
                 <div className="mb-4 flex items-center justify-between">
                   <h2 className="text-lg font-semibold">Filters</h2>
-                  <Button variant="ghost" size="sm" className="h-8 px-2 text-xs">
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-8 px-2 text-xs"
+                    onClick={handleResetFilters}
+                  >
                     Reset All
                   </Button>
                 </div>
@@ -235,7 +270,10 @@ export default function FlightsPage() {
                     </div>
                   }
                 >
-                  <FlightFilters />
+                  <FlightFilters 
+                    filters={filters}
+                    onChange={handleFilterChange}
+                  />
                 </Suspense>
               </div>
             </div>

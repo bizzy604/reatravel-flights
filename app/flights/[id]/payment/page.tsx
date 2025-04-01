@@ -1,150 +1,151 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
+import { useUser } from "@clerk/nextjs"
 import Image from "next/image"
 import Link from "next/link"
 import { ChevronLeft, Lock, Shield } from "lucide-react"
-import { useUser } from "@clerk/nextjs"
 import { Separator } from "@/components/ui/separator"
 import { MainNav } from "@/components/main-nav"
 import { UserNav } from "@/components/user-nav"
-import { PaymentForm } from "@/components/payment-form"
+import { StripeProvider } from "@/components/stripe-provider"
+import { StripePaymentForm } from "@/components/stripe-payment-form"
 import { PaymentConfirmation } from "@/components/payment-confirmation"
 import { OrderSummary } from "@/components/order-summary"
 import { ErrorBoundary } from "@/components/error-boundary"
 import { LoadingSpinner } from "@/components/loading-spinner"
-
-// Mock data for the booking
-const bookingData = {
-  id: "BK-12345678",
-  flightDetails: {
-    outbound: {
-      airline: {
-        name: "SkyWay Airlines",
-        logo: "/placeholder.svg?height=40&width=40",
-        code: "SW",
-        flightNumber: "1234",
-      },
-      departure: {
-        airport: "JFK",
-        terminal: "4",
-        city: "New York",
-        time: "08:30",
-        date: "2025-04-15",
-        fullDate: "Tuesday, April 15, 2025",
-      },
-      arrival: {
-        airport: "LAX",
-        terminal: "B",
-        city: "Los Angeles",
-        time: "11:45",
-        date: "2025-04-15",
-        fullDate: "Tuesday, April 15, 2025",
-      },
-      duration: "6h 15m",
-    },
-    return: {
-      airline: {
-        name: "SkyWay Airlines",
-        logo: "/placeholder.svg?height=40&width=40",
-        code: "SW",
-        flightNumber: "4321",
-      },
-      departure: {
-        airport: "LAX",
-        terminal: "B",
-        city: "Los Angeles",
-        time: "14:30",
-        date: "2025-04-22",
-        fullDate: "Tuesday, April 22, 2025",
-      },
-      arrival: {
-        airport: "JFK",
-        terminal: "4",
-        city: "New York",
-        time: "22:45",
-        date: "2025-04-22",
-        fullDate: "Tuesday, April 22, 2025",
-      },
-      duration: "5h 15m",
-    },
-  },
-  passengers: [
-    {
-      type: "Adult",
-      firstName: "John",
-      lastName: "Doe",
-      documentType: "Passport",
-      documentNumber: "AB123456",
-    },
-  ],
-  contactInfo: {
-    email: "john.doe@example.com",
-    phone: "+1 (555) 123-4567",
-  },
-  extras: {
-    seats: {
-      outbound: "14A (Window)",
-      return: "15C (Aisle)",
-    },
-    baggage: {
-      included: "1 carry-on, 1 checked bag",
-      additional: "1 extra checked bag",
-    },
-    meals: {
-      outbound: "Standard",
-      return: "Vegetarian",
-    },
-    additionalServices: ["Priority Boarding", "Travel Insurance"],
-  },
-  pricing: {
-    baseFare: 299.0,
-    taxes: 45.6,
-    seatSelection: 24.99,
-    extraBaggage: 35.0,
-    priorityBoarding: 15.99,
-    travelInsurance: 24.99,
-    total: 445.57,
-  },
-}
+import { toast } from "@/components/ui/use-toast"
 
 export default function PaymentPage() {
-  const { user, isLoaded } = useUser()
   const router = useRouter()
   const params = useParams()
   const flightId = params.id as string
+  const { user, isLoaded, isSignedIn } = useUser()
 
   const [paymentStatus, setPaymentStatus] = useState<"pending" | "processing" | "success" | "error">("pending")
-  const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [booking, setBooking] = useState<any>(null)
 
-  const handlePaymentSubmit = async () => {
-    setIsLoading(true)
-    setPaymentStatus("processing")
-    setError(null)
+  // Fetch booking data from session storage or API
+  useEffect(() => {
+    const fetchBooking = async () => {
+      try {
+        setIsLoading(true)
 
-    try {
-      // Simulate payment processing
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+        // First try to get booking from session storage
+        const bookingReference = sessionStorage.getItem("bookingReference")
+        const bookingData = sessionStorage.getItem("bookingData")
 
-      // Simulate API integration point
-      // In a real app, this would be an API call to process payment
-      // data-payment-processor="stripe" would be used in production
+        if (bookingReference && bookingData) {
+          setBooking(JSON.parse(bookingData))
+          setIsLoading(false)
+          return
+        }
 
-      setPaymentStatus("success")
-    } catch (err) {
-      setPaymentStatus("error")
-      setError("Payment processing failed. Please try again or use a different payment method.")
-    } finally {
-      setIsLoading(false)
+        // If not in session storage, try to get from URL query param
+        const urlParams = new URLSearchParams(window.location.search)
+        const refParam = urlParams.get("ref")
+
+        if (refParam) {
+          // Try to fetch booking by reference
+          const response = await fetch(`/api/bookings?reference=${refParam}`)
+
+          if (!response.ok) {
+            throw new Error("Failed to fetch booking")
+          }
+
+          const data = await response.json()
+
+          if (data.bookings && data.bookings.length > 0) {
+            setBooking(data.bookings[0])
+            setIsLoading(false)
+            return
+          }
+        }
+
+        // If we still don't have a booking, try to fetch by flight ID
+        const response = await fetch(`/api/bookings?flightId=${flightId}`)
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch booking")
+        }
+
+        const data = await response.json()
+
+        if (data.bookings && data.bookings.length > 0) {
+          setBooking(data.bookings[0])
+        } else {
+          // No booking found, redirect to booking page
+          toast({
+            title: "No booking found",
+            description: "Please complete the booking process first",
+            variant: "destructive",
+          })
+          router.push(`/flights/${flightId}/booking`)
+        }
+      } catch (err) {
+        console.error("Error fetching booking:", err)
+        setError("Failed to load booking details. Please try again.")
+      } finally {
+        setIsLoading(false)
+      }
     }
+
+    fetchBooking()
+  }, [flightId, router])
+
+  const handlePaymentSuccess = () => {
+    setPaymentStatus("success")
+    // Clear session storage after successful payment
+    sessionStorage.removeItem("bookingReference")
+    sessionStorage.removeItem("bookingData")
   }
 
-  if (!isLoaded || !user) {
+  const handlePaymentError = (errorMessage: string) => {
+    setPaymentStatus("error")
+    setError(errorMessage)
+  }
+
+  // Show loading spinner while checking authentication or loading data
+  if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
+
+  // If no booking was found
+  if (!booking && !isLoading) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <div className="container flex h-16 items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Image src="/placeholder.svg?height=32&width=32" alt="SkyWay Logo" width={32} height={32} />
+              <span className="text-xl font-bold">SkyWay</span>
+            </div>
+            <MainNav />
+            <UserNav />
+          </div>
+        </header>
+
+        <main className="flex-1 container py-12">
+          <div className="text-center">
+            <h1 className="text-2xl font-bold mb-4">No Booking Found</h1>
+            <p className="mb-6 text-muted-foreground">
+              You don't have an active booking for this flight. Please complete the booking process first.
+            </p>
+            <Link
+              href={`/flights/${flightId}/booking`}
+              className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              Go to Booking
+            </Link>
+          </div>
+        </main>
       </div>
     )
   }
@@ -154,8 +155,8 @@ export default function PaymentPage() {
       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center justify-between">
           <div className="flex items-center gap-2">
-            <Image src="/logo1.png" alt="Rea Travel Logo" width={32} height={32} />
-            <span className="text-xl font-bold">Rea Travel</span>
+            <Image src="/placeholder.svg?height=32&width=32" alt="SkyWay Logo" width={32} height={32} />
+            <span className="text-xl font-bold">SkyWay</span>
           </div>
           <MainNav />
           <UserNav />
@@ -172,17 +173,16 @@ export default function PaymentPage() {
                   className="inline-flex items-center text-sm font-medium text-muted-foreground hover:text-foreground"
                 >
                   <ChevronLeft className="mr-1 h-4 w-4" />
-                  Back to Booking Details
+                  Back to Flight Details
                 </Link>
 
                 <h1 className="mt-4 text-2xl font-bold md:text-3xl">Payment</h1>
                 <div className="mt-2 flex items-center text-sm text-muted-foreground">
                   <Lock className="mr-1 h-4 w-4" />
-                  <span>Secure payment processing</span>
+                  <span>Secure payment processing with Stripe</span>
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Welcome, {user.firstName || user.username || "User"}! Please complete your payment to confirm your
-                  booking.
+                  Please complete your payment to confirm your booking {booking.bookingReference}.
                 </p>
               </div>
             )}
@@ -193,15 +193,8 @@ export default function PaymentPage() {
               </div>
             )}
 
-            {paymentStatus === "processing" ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <LoadingSpinner size="lg" />
-                <p className="mt-4 text-center text-muted-foreground">
-                  Processing your payment. Please do not close this page...
-                </p>
-              </div>
-            ) : paymentStatus === "success" ? (
-              <PaymentConfirmation booking={bookingData} />
+            {paymentStatus === "success" ? (
+              <PaymentConfirmation booking={booking} />
             ) : (
               <div className="grid gap-6 lg:grid-cols-[1fr_350px]">
                 {/* Payment Form */}
@@ -234,7 +227,22 @@ export default function PaymentPage() {
                       </div>
                     </div>
                     <Separator />
-                    <PaymentForm onSubmit={handlePaymentSubmit} isLoading={isLoading} />
+                    <StripeProvider>
+                      <StripePaymentForm
+                        bookingReference={booking.bookingReference}
+                        amount={booking.totalAmount}
+                        currency="usd"
+                        flightDetails={{
+                          id: flightId,
+                          from: booking.flightDetails.outbound.departure.city,
+                          to: booking.flightDetails.outbound.arrival.city,
+                          departureDate: booking.flightDetails.outbound.departure.fullDate,
+                          returnDate: booking.flightDetails.return?.departure.fullDate,
+                        }}
+                        onPaymentSuccess={handlePaymentSuccess}
+                        onPaymentError={handlePaymentError}
+                      />
+                    </StripeProvider>
                   </div>
 
                   <div className="rounded-lg border bg-muted/50 p-4">
@@ -243,8 +251,8 @@ export default function PaymentPage() {
                       <div>
                         <h3 className="font-medium">Secure Payment</h3>
                         <p className="text-sm text-muted-foreground">
-                          Your payment information is encrypted and securely processed. We do not store your full card
-                          details.
+                          Your payment information is securely processed by Stripe. Your card details never touch our
+                          servers.
                         </p>
                       </div>
                     </div>
@@ -253,14 +261,19 @@ export default function PaymentPage() {
 
                 {/* Order Summary */}
                 <div>
-                  <OrderSummary booking={bookingData} />
+                  <OrderSummary booking={booking} />
                 </div>
               </div>
             )}
           </div>
         </ErrorBoundary>
       </main>
+
+      <footer className="border-t bg-background">
+        <div className="container py-6 text-center text-sm text-muted-foreground">
+          <p>© {new Date().getFullYear()} Rea Travel. All rights reserved.</p>
+        </div>
+      </footer>
     </div>
   )
 }
-

@@ -1,128 +1,116 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { createBooking } from "@/lib/flight-api"
 import { prisma } from "@/lib/prisma"
-import { handleApiError, createValidationError, createUnauthorizedError } from "@/lib/error-handler"
-import { logger } from "@/lib/logger"
-
-export async function POST(request: NextRequest) {
-  try {
-    // Check authentication
-    const { userId } = auth()
-    if (!userId) {
-      throw createUnauthorizedError()
-    }
-
-    // Parse request body
-    const body = await request.json()
-
-    // Validate required fields
-    if (!body.flightId || !body.passengers || !body.contactInfo) {
-      throw createValidationError("Missing required booking information", {
-        required: ["flightId", "passengers", "contactInfo"],
-        received: Object.keys(body),
-      })
-    }
-
-    // Validate passengers
-    if (!Array.isArray(body.passengers) || body.passengers.length === 0) {
-      throw createValidationError("Invalid passengers data", {
-        message: "At least one passenger is required",
-      })
-    }
-
-    // Validate contact info
-    if (!body.contactInfo.email || !body.contactInfo.phone) {
-      throw createValidationError("Invalid contact information", {
-        required: ["email", "phone"],
-        received: Object.keys(body.contactInfo),
-      })
-    }
-
-    // Log booking request
-    logger.info("Booking request", {
-      userId,
-      flightId: body.flightId,
-      passengerCount: body.passengers.length,
-    })
-
-    // Create booking with external API
-    const bookingResult = await createBooking({
-      flightId: body.flightId,
-      passengers: body.passengers,
-      contactInfo: body.contactInfo,
-      extras: body.extras,
-    })
-
-    // Store booking in database using Prisma
-    const booking = await prisma.booking.create({
-      data: {
-        userId,
-        bookingReference: bookingResult.bookingReference,
-        flightDetails: { flightId: body.flightId },
-        passengerDetails: body.passengers,
-        contactInfo: body.contactInfo,
-        extras: body.extras || {},
-        totalAmount: bookingResult.totalAmount,
-        status: bookingResult.status,
-      },
-    })
-
-    logger.info("Booking stored in database", {
-      bookingId: booking.id,
-      bookingReference: bookingResult.bookingReference,
-    })
-
-    // Return booking result
-    return NextResponse.json(bookingResult, { status: 201 })
-  } catch (error) {
-    return handleApiError(error)
-  }
-}
+import { handleApiError } from "@/lib/error-handler"
 
 export async function GET(request: NextRequest) {
   try {
-    // Check authentication
+    // Get user ID from Clerk authentication
     const { userId } = auth()
-    if (!userId) {
-      throw createUnauthorizedError()
-    }
 
-    // Get query parameters
+    // For development purposes, allow unauthenticated requests
+    // In production, you would want to remove this and require authentication
+    const userIdToUse = userId || "dev-user-id"
+
     const searchParams = request.nextUrl.searchParams
+    const flightId = searchParams.get("flightId")
+    const bookingReference = searchParams.get("reference")
     const status = searchParams.get("status")
-    const limit = Number.parseInt(searchParams.get("limit") || "10", 10)
-    const offset = Number.parseInt(searchParams.get("offset") || "0", 10)
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const offset = (page - 1) * limit
 
-    // Build query with Prisma
-    const where = {
-      userId,
-      ...(status ? { status } : {}),
+    // Build the where clause based on the provided filters
+    const where: any = {}
+
+    // Only filter by userId if authenticated
+    if (userId) {
+      where.userId = userId
     }
 
-    // Execute query with Prisma
-    const [bookings, total] = await Promise.all([
-      prisma.booking.findMany({
-        where,
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip: offset,
-        take: limit,
-      }),
-      prisma.booking.count({ where }),
-    ])
+    if (bookingReference) {
+      where.bookingReference = bookingReference
+    }
 
-    // Return bookings
+    if (status) {
+      where.status = status
+    }
+
+    if (flightId) {
+      // This is a bit tricky since flightId is inside the JSON
+      // For PostgreSQL, we can use the jsonb containment operator
+      where.flightDetails = {
+        path: ["outbound", "airline", "flightNumber"],
+        equals: flightId,
+      }
+    }
+
+    // Get total count for pagination
+    const totalCount = await prisma.booking.count({ where })
+
+    // Get bookings with pagination
+    const bookings = await prisma.booking.findMany({
+      where,
+      orderBy: {
+        createdAt: "desc",
+      },
+      skip: offset,
+      take: limit,
+      include: {
+        payments: true,
+      },
+    })
+
     return NextResponse.json({
       bookings,
-      meta: {
-        total,
+      pagination: {
+        total: totalCount,
+        page,
         limit,
-        offset,
+        pages: Math.ceil(totalCount / limit),
       },
     })
   } catch (error) {
     return handleApiError(error)
   }
 }
+
+export async function POST(request: NextRequest) {
+  try {
+    // Get user ID from Clerk authentication
+    const { userId } = auth()
+
+    // For development purposes, allow unauthenticated requests
+    // In production, you would want to remove this and require authentication
+    const userIdToUse = userId || "dev-user-id"
+
+    const body = await request.json()
+
+    // Validate required fields
+    if (!body.flightDetails || !body.passengerDetails || !body.contactInfo || !body.totalAmount) {
+      return NextResponse.json({ error: "Missing required booking information" }, { status: 400 })
+    }
+
+    // Generate a unique booking reference
+    const bookingReference = `BOOK-${Math.floor(100000 + Math.random() * 900000)}`
+
+    // Create the booking
+    const booking = await prisma.booking.create({
+      data: {
+        userId: userIdToUse,
+        bookingReference,
+        flightDetails: body.flightDetails,
+        passengerDetails: body.passengerDetails,
+        contactInfo: body.contactInfo,
+        extras: body.extras || {},
+        totalAmount: body.totalAmount,
+        status: "pending",
+      },
+    })
+
+    return NextResponse.json({ booking })
+  } catch (error) {
+    return handleApiError(error)
+  }
+}
+

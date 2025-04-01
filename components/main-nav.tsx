@@ -2,78 +2,104 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { Menu } from "lucide-react"
+import { usePathname } from "next/navigation"
+import { Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import {
+  NavigationMenu,
+  NavigationMenuItem,
+  NavigationMenuLink,
+  NavigationMenuList,
+  navigationMenuTriggerStyle,
+} from "@/components/ui/navigation-menu"
+import { cn } from "@/lib/utils"
+
+const items = [
+  {
+    title: "Home",
+    href: "/",
+  },
+  {
+    title: "Flights",
+    href: "/flights",
+  },
+  {
+    title: "Manage Booking",
+    href: "/manage",
+  },
+  {
+    title: "Support",
+    href: "/contact",
+  },
+]
 
 export function MainNav() {
-  return (
-    <nav className="hidden sm:flex items-center space-x-4 lg:space-x-6">
-      <Link
-        href="/"
-        className="text-sm font-medium transition-colors hover:text-primary"
-      >
-        Home
-      </Link>
-      <Link
-        href="/flights"
-        className="text-sm font-medium transition-colors hover:text-primary"
-      >
-        Flights
-      </Link>
-      <Link
-        href="/flights"
-        className="text-sm font-medium transition-colors hover:text-primary"
-      >
-        Manage Booking
-      </Link>
-      <Link
-        href="/contact"
-        className="text-sm font-medium transition-colors hover:text-primary"
-      >
-        Support
-      </Link>
-    </nav>
-  )
-}
+  const [showMobileMenu, setShowMobileMenu] = React.useState<boolean>(false)
+  const pathname = usePathname()
 
-export function MobileNav() {
   return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="ghost" className="sm:hidden" size="icon">
-          <Menu className="h-5 w-5" />
+    <div className="flex items-center">
+      <div className="hidden md:flex">
+        <NavigationMenu>
+          <NavigationMenuList>
+            {items.map((item) => {
+              const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href))
+
+              return (
+                <NavigationMenuItem key={item.title}>
+                  <Link href={item.href} legacyBehavior passHref>
+                    <NavigationMenuLink
+                      className={cn(navigationMenuTriggerStyle(), isActive && "bg-accent text-accent-foreground")}
+                      aria-current={isActive ? "page" : undefined}
+                    >
+                      {item.title}
+                    </NavigationMenuLink>
+                  </Link>
+                </NavigationMenuItem>
+              )
+            })}
+          </NavigationMenuList>
+        </NavigationMenu>
+      </div>
+
+      <div className="md:hidden">
+        <Button
+          variant="ghost"
+          className="mr-2 px-0 text-base hover:bg-transparent focus:ring-0"
+          onClick={() => setShowMobileMenu(!showMobileMenu)}
+          aria-label="Toggle Menu"
+          aria-expanded={showMobileMenu}
+          aria-controls="mobile-menu"
+        >
+          {showMobileMenu ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
         </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="w-[240px] sm:hidden">
-        <nav className="flex flex-col space-y-4">
-          <Link
-            href="/"
-            className="text-sm font-medium transition-colors hover:text-primary"
-          >
-            Home
-          </Link>
-          <Link
-            href="/flights"
-            className="text-sm font-medium transition-colors hover:text-primary"
-          >
-            Flights
-          </Link>
-          <Link
-            href="/flights"
-            className="text-sm font-medium transition-colors hover:text-primary"
-          >
-            Manage Booking
-          </Link>
-          <Link
-            href="/contact"
-            className="text-sm font-medium transition-colors hover:text-primary"
-          >
-            Support
-          </Link>
-        </nav>
-      </SheetContent>
-    </Sheet>
+
+        {showMobileMenu && (
+          <div id="mobile-menu" className="absolute left-0 top-16 z-50 w-full bg-background pb-6 pt-2 shadow-lg">
+            <div className="container grid gap-3">
+              {items.map((item) => {
+                const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href))
+
+                return (
+                  <Link
+                    key={item.title}
+                    href={item.href}
+                    className={cn(
+                      "text-muted-foreground hover:text-foreground",
+                      isActive && "font-medium text-foreground",
+                    )}
+                    aria-current={isActive ? "page" : undefined}
+                    onClick={() => setShowMobileMenu(false)}
+                  >
+                    {item.title}
+                  </Link>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 

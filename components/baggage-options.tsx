@@ -1,13 +1,35 @@
 "use client"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Minus, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
-export function BaggageOptions() {
+interface BaggageOptionsProps {
+  onChange?: (baggage: { included: string; additional: string }) => void
+}
+
+export function BaggageOptions({ onChange }: BaggageOptionsProps) {
   const [checkedBags, setCheckedBags] = useState(1)
+  const [specialEquipment, setSpecialEquipment] = useState("none")
+
+  // Update parent component when values change
+  useEffect(() => {
+    if (onChange) {
+      const included = "1 personal item, 1 carry-on bag, 1 checked bag"
+      let additional = `${checkedBags} additional checked bag${checkedBags !== 1 ? "s" : ""}`
+
+      if (specialEquipment !== "none") {
+        additional += `, ${specialEquipment} equipment`
+      }
+
+      onChange({
+        included,
+        additional: checkedBags > 0 || specialEquipment !== "none" ? additional : "None",
+      })
+    }
+  }, [checkedBags, specialEquipment, onChange])
 
   const incrementBags = () => {
     if (checkedBags < 5) {
@@ -71,7 +93,7 @@ export function BaggageOptions() {
 
       <div className="rounded-md border p-4">
         <h4 className="mb-4 text-sm font-medium">Special Equipment</h4>
-        <RadioGroup defaultValue="none">
+        <RadioGroup defaultValue="none" value={specialEquipment} onValueChange={setSpecialEquipment}>
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="none" id="special-none" />
             <div>
@@ -97,4 +119,3 @@ export function BaggageOptions() {
     </div>
   )
 }
-

@@ -1,14 +1,32 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
-export function MealOptions() {
+interface MealOptionsProps {
+  onChange?: (meals: { outbound: string; return: string }) => void
+}
+
+export function MealOptions({ onChange }: MealOptionsProps) {
+  const [outboundMeal, setOutboundMeal] = useState("standard")
+  const [returnMeal, setReturnMeal] = useState("standard")
+
+  // Update parent component when values change
+  useEffect(() => {
+    if (onChange) {
+      onChange({
+        outbound: outboundMeal.charAt(0).toUpperCase() + outboundMeal.slice(1),
+        return: returnMeal.charAt(0).toUpperCase() + returnMeal.slice(1),
+      })
+    }
+  }, [outboundMeal, returnMeal, onChange])
+
   return (
     <div className="space-y-4">
       <div className="rounded-md border p-4">
         <h4 className="mb-2 text-sm font-medium">Outbound Flight Meal</h4>
-        <RadioGroup defaultValue="standard">
+        <RadioGroup defaultValue="standard" value={outboundMeal} onValueChange={setOutboundMeal}>
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="standard" id="meal-standard-out" />
             <div>
@@ -56,7 +74,7 @@ export function MealOptions() {
 
       <div className="rounded-md border p-4">
         <h4 className="mb-2 text-sm font-medium">Return Flight Meal</h4>
-        <RadioGroup defaultValue="standard">
+        <RadioGroup defaultValue="standard" value={returnMeal} onValueChange={setReturnMeal}>
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="standard" id="meal-standard-return" />
             <div>
@@ -104,4 +122,3 @@ export function MealOptions() {
     </div>
   )
 }
-
