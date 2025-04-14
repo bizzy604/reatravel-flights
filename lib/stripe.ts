@@ -2,7 +2,14 @@ import Stripe from "stripe"
 import { logger } from "./logger"
 
 // Initialize Stripe with API key from environment variables
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Note: There's a typo in the .env file (STRIPE_SECRET_KEYy instead of STRIPE_SECRET_KEY)
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+
+if (!stripeSecretKey) {
+  console.error("Warning: Stripe secret key is missing. Please check your environment variables.");
+}
+
+const stripe = new Stripe(stripeSecretKey!, {
   apiVersion: "2023-10-16", // Use the latest API version
   appInfo: {
     name: "Rea Travel Agency Flight Booking Portal",
@@ -68,12 +75,12 @@ export async function updatePaymentIntent(
 // Verify webhook signature with enhanced security
 export function constructEventFromPayload(payload: string | Buffer, signature: string): Stripe.Event {
   try {
-    // Use tolerance option to prevent replay attacks
+    // Use tolerance option to prevent replay attacks (300 seconds = 5 minutes)
     return stripe.webhooks.constructEvent(
       payload,
       signature,
       process.env.STRIPE_WEBHOOK_SECRET!,
-      {tolerance: 300}, // 5 minute tolerance
+      300 // 5 minute tolerance in seconds
     )
   } catch (error) {
     logger.error("Error verifying webhook signature", { error })

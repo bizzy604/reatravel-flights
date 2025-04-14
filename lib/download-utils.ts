@@ -48,17 +48,26 @@ export function generateBookingPDF(booking: any): Blob {
       </div>
       
       <h2>Passenger Information</h2>
-      ${booking.passengers
-        .map(
+      ${booking.passengers && booking.passengers.length > 0 // Check if passengers exist and the array is not empty
+        ? booking.passengers.map(
           (passenger: any) => `
         <div class="passenger-info">
-          <p><strong>Name:</strong> ${passenger.firstName} ${passenger.lastName}</p>
-          <p><strong>Type:</strong> ${passenger.type}</p>
-          <p><strong>Document:</strong> ${passenger.documentType} - ${passenger.documentNumber}</p>
+          <p><strong>Name:</strong> ${passenger.firstName || 'N/A'} ${passenger.lastName || ''}</p>
+          <p><strong>Email:</strong> ${passenger.email || 'N/A'}</p>
+          <p><strong>Phone:</strong> ${passenger.phone || 'N/A'}</p>
+          <p><strong>Date of Birth:</strong> ${passenger.dob || 'N/A'}</p>
+          <p><strong>Nationality:</strong> ${passenger.nationality || 'N/A'}</p>
+          <p><strong>Passport/ID:</strong> ${passenger.passportId || 'N/A'}</p>
+          <p><strong>Passport Expiry:</strong> ${passenger.passportExpiry || 'N/A'}</p>
+          <p><strong>Gender:</strong> ${passenger.gender || 'N/A'}</p>
+          <p><strong>Seat Preference:</strong> ${passenger.seatPreference || 'N/A'}</p>
+          <p><strong>Meal Preference:</strong> ${passenger.mealPreference || 'N/A'}</p>
+          <p><strong>Special Needs:</strong> ${passenger.specialNeeds || 'N/A'}</p>
         </div>
-      `,
-        )
-        .join("")}
+      `
+        ).join('')
+        : '<p>No passenger information available.</p>' // Display a message if no passengers
+      }
       
       <h2>Selected Extras</h2>
       <p><strong>Seats:</strong> Outbound: ${booking.extras.seats.outbound}, Return: ${booking.extras.seats.return}</p>

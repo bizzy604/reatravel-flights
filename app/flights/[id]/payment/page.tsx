@@ -124,8 +124,8 @@ export default function PaymentPage() {
         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="container flex h-16 items-center justify-between">
             <div className="flex items-center gap-2">
-              <Image src="/placeholder.svg?height=32&width=32" alt="SkyWay Logo" width={32} height={32} />
-              <span className="text-xl font-bold">SkyWay</span>
+              <Image src="/logo1.png" alt="SkyWay Logo" width={32} height={32} />
+              <span className="text-xl font-bold">Rea Travel</span>
             </div>
             <MainNav />
             <UserNav />

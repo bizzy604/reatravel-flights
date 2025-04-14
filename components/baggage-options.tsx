@@ -1,5 +1,4 @@
 "use client"
-import { useState, useEffect } from "react"
 import { Minus, Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -7,41 +6,27 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
 interface BaggageOptionsProps {
-  onChange?: (baggage: { included: string; additional: string }) => void
+  selectedBaggage: any; // Expects object like { checkedBags: number, specialEquipment: string }
+  onBaggageChange: (updatedBaggage: any) => void;
 }
 
-export function BaggageOptions({ onChange }: BaggageOptionsProps) {
-  const [checkedBags, setCheckedBags] = useState(1)
-  const [specialEquipment, setSpecialEquipment] = useState("none")
-
-  // Update parent component when values change
-  useEffect(() => {
-    if (onChange) {
-      const included = "1 personal item, 1 carry-on bag, 1 checked bag"
-      let additional = `${checkedBags} additional checked bag${checkedBags !== 1 ? "s" : ""}`
-
-      if (specialEquipment !== "none") {
-        additional += `, ${specialEquipment} equipment`
-      }
-
-      onChange({
-        included,
-        additional: checkedBags > 0 || specialEquipment !== "none" ? additional : "None",
-      })
-    }
-  }, [checkedBags, specialEquipment, onChange])
+export function BaggageOptions({ selectedBaggage, onBaggageChange }: BaggageOptionsProps) {
+  const checkedBags = selectedBaggage?.checkedBags ?? 0;
+  const specialEquipment = selectedBaggage?.specialEquipment ?? 'none';
 
   const incrementBags = () => {
-    if (checkedBags < 5) {
-      setCheckedBags(checkedBags + 1)
-    }
-  }
+    const newCount = Math.min(checkedBags + 1, 5); // Ensure max 5
+    onBaggageChange({ ...selectedBaggage, checkedBags: newCount });
+  };
 
   const decrementBags = () => {
-    if (checkedBags > 0) {
-      setCheckedBags(checkedBags - 1)
-    }
-  }
+    const newCount = Math.max(checkedBags - 1, 0); // Ensure min 0
+    onBaggageChange({ ...selectedBaggage, checkedBags: newCount });
+  };
+
+  const handleSpecialEquipmentChange = (value: string) => {
+    onBaggageChange({ ...selectedBaggage, specialEquipment: value });
+  };
 
   return (
     <div className="space-y-6">
@@ -93,7 +78,10 @@ export function BaggageOptions({ onChange }: BaggageOptionsProps) {
 
       <div className="rounded-md border p-4">
         <h4 className="mb-4 text-sm font-medium">Special Equipment</h4>
-        <RadioGroup defaultValue="none" value={specialEquipment} onValueChange={setSpecialEquipment}>
+        <RadioGroup 
+          value={specialEquipment} 
+          onValueChange={handleSpecialEquipmentChange}
+        >
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="none" id="special-none" />
             <div>

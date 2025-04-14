@@ -1,10 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { useState } from "react"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 
 // Mock data for seat map
 const seatMap = {
@@ -16,12 +14,12 @@ const seatMap = {
 }
 
 interface SeatSelectionProps {
-  onSeatSelect?: (seat: string) => void
+  flightType: 'outbound' | 'return';
+  selectedSeats: string[];
+  onSeatChange: (flightType: 'outbound' | 'return', updatedSeats: string[]) => void;
 }
 
-export function SeatSelection({ onSeatSelect }: SeatSelectionProps) {
-  const [selectedSeat, setSelectedSeat] = useState<string | null>(null)
-
+export function SeatSelection({ flightType, selectedSeats, onSeatChange }: SeatSelectionProps) {
   const isSeatAvailable = (seat: string) => {
     return !seatMap.unavailableSeats.includes(seat)
   }
@@ -42,13 +40,18 @@ export function SeatSelection({ onSeatSelect }: SeatSelectionProps) {
 
   const handleSeatSelect = (seat: string) => {
     if (isSeatAvailable(seat)) {
-      setSelectedSeat(seat)
+      const currentlySelected = selectedSeats.includes(seat);
+      let newSelectedSeats;
 
-      // Call the onSeatSelect callback with the selected seat
-      if (onSeatSelect) {
-        const seatType = isSeatPremium(seat) ? "Premium" : isSeatExitRow(seat) ? "Exit Row" : "Standard"
-        onSeatSelect(`${seat} (${seatType})`)
+      if (currentlySelected) {
+        // Deselect: Remove the seat from the array
+        newSelectedSeats = selectedSeats.filter(s => s !== seat);
+      } else {
+        // Select: Add the seat to the array
+        newSelectedSeats = [...selectedSeats, seat];
       }
+      // Call the callback with the updated array
+      onSeatChange(flightType, newSelectedSeats);
     }
   }
 
@@ -102,7 +105,7 @@ export function SeatSelection({ onSeatSelect }: SeatSelectionProps) {
                   const isAvailable = isSeatAvailable(seat)
                   const isPremium = isSeatPremium(seat)
                   const isExitRow = isSeatExitRow(seat)
-                  const isSelected = selectedSeat === seat
+                  const isSelected = selectedSeats.includes(seat)
 
                   return (
                     <button
@@ -139,26 +142,17 @@ export function SeatSelection({ onSeatSelect }: SeatSelectionProps) {
       <div className="mt-4 rounded-md border p-4">
         <div className="flex items-center justify-between">
           <div>
-            <h4 className="font-medium">Selected Seat</h4>
-            <p className="text-sm text-muted-foreground">
-              {selectedSeat ? `${selectedSeat} - $${getSeatPrice(selectedSeat).toFixed(2)}` : "No seat selected"}
-            </p>
+            <h4 className="font-medium">Selected Seats ({selectedSeats.length})</h4>
+            {selectedSeats.length > 0 ? (
+              <p className="text-sm text-muted-foreground">
+                {selectedSeats.join(", ")} - Total: ${selectedSeats.reduce((total, seat) => total + getSeatPrice(seat), 0).toFixed(2)}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No seats selected</p>
+            )}
           </div>
-          {selectedSeat && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelectedSeat(null)
-                if (onSeatSelect) onSeatSelect("")
-              }}
-            >
-              Change
-            </Button>
-          )}
         </div>
       </div>
     </div>
   )
 }
-

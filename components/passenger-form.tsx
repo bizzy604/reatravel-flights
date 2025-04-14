@@ -7,18 +7,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 interface PassengerFormProps {
   passengerNumber: number
+  passengerData: any;      // Data for this passenger
+  onPassengerChange: (updatedData: any) => void; // Callback to update parent state
 }
 
-export function PassengerForm({ passengerNumber }: PassengerFormProps) {
-  const [passengerType, setPassengerType] = useState("adult")
+export function PassengerForm({ passengerNumber, passengerData, onPassengerChange }: PassengerFormProps) {
+  const handleInputChange = (field: string, value: any) => {
+    onPassengerChange({ ...passengerData, [field]: value });
+  };
 
   return (
     <div className="space-y-4 rounded-md border p-4">
       <div>
         <RadioGroup
-          defaultValue="adult"
-          value={passengerType}
-          onValueChange={setPassengerType}
+          value={passengerData?.type || "adult"} 
+          onValueChange={(value) => handleInputChange('type', value)} 
           className="flex flex-wrap gap-4"
         >
           <div className="flex items-center space-x-2">
@@ -39,11 +42,21 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`first-name-${passengerNumber}`}>First Name</Label>
-          <Input id={`first-name-${passengerNumber}`} placeholder="Enter first name" />
+          <Input 
+            id={`first-name-${passengerNumber}`} 
+            placeholder="Enter first name" 
+            value={passengerData?.firstName || ''} 
+            onChange={(e) => handleInputChange('firstName', e.target.value)} 
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`last-name-${passengerNumber}`}>Last Name</Label>
-          <Input id={`last-name-${passengerNumber}`} placeholder="Enter last name" />
+          <Input 
+            id={`last-name-${passengerNumber}`} 
+            placeholder="Enter last name" 
+            value={passengerData?.lastName || ''} 
+            onChange={(e) => handleInputChange('lastName', e.target.value)} 
+          />
         </div>
       </div>
 
@@ -51,7 +64,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
         <div className="space-y-2">
           <Label htmlFor={`dob-${passengerNumber}`}>Date of Birth</Label>
           <div className="grid grid-cols-3 gap-2">
-            <Select>
+            <Select 
+              value={passengerData?.dob?.day || ''} 
+              onValueChange={(value) => handleInputChange('dob', { ...passengerData?.dob, day: value })} >
               <SelectTrigger>
                 <SelectValue placeholder="Day" />
               </SelectTrigger>
@@ -63,7 +78,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <Select>
+            <Select 
+              value={passengerData?.dob?.month || ''} 
+              onValueChange={(value) => handleInputChange('dob', { ...passengerData?.dob, month: value })} >
               <SelectTrigger>
                 <SelectValue placeholder="Month" />
               </SelectTrigger>
@@ -88,7 +105,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <Select>
+            <Select 
+              value={passengerData?.dob?.year || ''} 
+              onValueChange={(value) => handleInputChange('dob', { ...passengerData?.dob, year: value })} >
               <SelectTrigger>
                 <SelectValue placeholder="Year" />
               </SelectTrigger>
@@ -104,7 +123,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
         </div>
         <div className="space-y-2">
           <Label htmlFor={`gender-${passengerNumber}`}>Gender</Label>
-          <Select>
+          <Select 
+            value={passengerData?.gender || ''} 
+            onValueChange={(value) => handleInputChange('gender', value)} >
             <SelectTrigger>
               <SelectValue placeholder="Select gender" />
             </SelectTrigger>
@@ -134,11 +155,18 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor={`document-number-${passengerNumber}`}>Document Number</Label>
-          <Input id={`document-number-${passengerNumber}`} placeholder="Enter document number" />
+          <Input 
+            id={`document-number-${passengerNumber}`} 
+            placeholder="Enter document number" 
+            value={passengerData?.documentNumber || ''} 
+            onChange={(e) => handleInputChange('documentNumber', e.target.value)} 
+          />
         </div>
         <div className="space-y-2">
           <Label htmlFor={`nationality-${passengerNumber}`}>Nationality</Label>
-          <Select>
+          <Select 
+            value={passengerData?.nationality || ''} 
+            onValueChange={(value) => handleInputChange('nationality', value)} >
             <SelectTrigger>
               <SelectValue placeholder="Select country" />
             </SelectTrigger>
@@ -163,7 +191,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
         <div className="space-y-2">
           <Label htmlFor={`expiry-date-${passengerNumber}`}>Document Expiry Date</Label>
           <div className="grid grid-cols-3 gap-2">
-            <Select>
+            <Select 
+              value={passengerData?.expiryDate?.day || ''} 
+              onValueChange={(value) => handleInputChange('expiryDate', { ...passengerData?.expiryDate, day: value })} >
               <SelectTrigger>
                 <SelectValue placeholder="Day" />
               </SelectTrigger>
@@ -175,7 +205,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <Select>
+            <Select 
+              value={passengerData?.expiryDate?.month || ''} 
+              onValueChange={(value) => handleInputChange('expiryDate', { ...passengerData?.expiryDate, month: value })} >
               <SelectTrigger>
                 <SelectValue placeholder="Month" />
               </SelectTrigger>
@@ -200,7 +232,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
                 ))}
               </SelectContent>
             </Select>
-            <Select>
+            <Select 
+              value={passengerData?.expiryDate?.year || ''} 
+              onValueChange={(value) => handleInputChange('expiryDate', { ...passengerData?.expiryDate, year: value })} >
               <SelectTrigger>
                 <SelectValue placeholder="Year" />
               </SelectTrigger>
@@ -216,7 +250,9 @@ export function PassengerForm({ passengerNumber }: PassengerFormProps) {
         </div>
         <div className="space-y-2">
           <Label htmlFor={`issuing-country-${passengerNumber}`}>Issuing Country</Label>
-          <Select>
+          <Select 
+            value={passengerData?.issuingCountry || ''} 
+            onValueChange={(value) => handleInputChange('issuingCountry', value)} >
             <SelectTrigger>
               <SelectValue placeholder="Select country" />
             </SelectTrigger>

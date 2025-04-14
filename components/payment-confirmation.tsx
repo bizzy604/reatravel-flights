@@ -190,16 +190,20 @@ export function PaymentConfirmation({ booking }: PaymentConfirmationProps) {
           <div>
             <h3 className="mb-2 text-lg font-medium">Passenger Information</h3>
             <div className="rounded-md border p-4">
-              {booking.passengers.map((passenger: any, index: number) => (
-                <div key={index} className="mb-2 last:mb-0">
-                  <p className="font-medium">
-                    {passenger.firstName} {passenger.lastName}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {passenger.type} • {passenger.documentType}: {passenger.documentNumber}
-                  </p>
-                </div>
-              ))}
+              {booking.passengers && booking.passengers.length > 0 ? (
+                booking.passengers.map((passenger: any, index: number) => (
+                  <div key={index} className="mb-2 last:mb-0">
+                    <p className="font-medium">
+                      {passenger.firstName} {passenger.lastName}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {passenger.type} • {passenger.documentType}: {passenger.documentNumber}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p>No passenger information available</p>
+              )}
             </div>
           </div>
 
@@ -245,33 +249,41 @@ export function PaymentConfirmation({ booking }: PaymentConfirmationProps) {
             <div className="rounded-md border p-4">
               <div className="space-y-2">
                 <div className="flex justify-between">
-                  <span>Base fare ({booking.passengers.length} passenger)</span>
-                  <span>${booking.pricing.baseFare.toFixed(2)}</span>
+                  <span>Base fare ({booking.passengers?.length || 1} passenger{(booking.passengers?.length || 1) > 1 ? 's' : ''})</span>
+                  <span>${booking.pricing?.baseFare?.toFixed(2) || '0.00'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Taxes and fees</span>
-                  <span>${booking.pricing.taxes.toFixed(2)}</span>
+                  <span>${booking.pricing?.taxes?.toFixed(2) || '0.00'}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Seat selection</span>
-                  <span>${booking.pricing.seatSelection.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Extra baggage</span>
-                  <span>${booking.pricing.extraBaggage.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Priority boarding</span>
-                  <span>${booking.pricing.priorityBoarding.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Travel insurance</span>
-                  <span>${booking.pricing.travelInsurance.toFixed(2)}</span>
-                </div>
+                {booking.pricing?.seatSelection !== undefined && (
+                  <div className="flex justify-between">
+                    <span>Seat selection</span>
+                    <span>${booking.pricing?.seatSelection?.toFixed(2) || '0.00'}</span>
+                  </div>
+                )}
+                {booking.pricing?.extraBaggage !== undefined && (
+                  <div className="flex justify-between">
+                    <span>Extra baggage</span>
+                    <span>${booking.pricing?.extraBaggage?.toFixed(2) || '0.00'}</span>
+                  </div>
+                )}
+                {booking.pricing?.priorityBoarding !== undefined && (
+                  <div className="flex justify-between">
+                    <span>Priority boarding</span>
+                    <span>${booking.pricing?.priorityBoarding?.toFixed(2) || '0.00'}</span>
+                  </div>
+                )}
+                {booking.pricing?.travelInsurance !== undefined && (
+                  <div className="flex justify-between">
+                    <span>Travel insurance</span>
+                    <span>${booking.pricing?.travelInsurance?.toFixed(2) || '0.00'}</span>
+                  </div>
+                )}
                 <Separator />
                 <div className="flex justify-between font-bold">
                   <span>Total paid</span>
-                  <span>${booking.pricing.total.toFixed(2)}</span>
+                  <span>${booking.pricing?.total?.toFixed(2) || (booking.totalAmount ? parseFloat(String(booking.totalAmount)).toFixed(2) : '0.00')}</span>
                 </div>
               </div>
             </div>

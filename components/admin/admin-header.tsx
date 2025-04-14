@@ -28,8 +28,8 @@ export function AdminHeader() {
           </SheetContent>
         </Sheet>
         <Link href="/admin" className="mr-6 flex items-center gap-2">
-          <Image src="/placeholder.svg?height=32&width=32" alt="SkyWay Logo" width={32} height={32} />
-          <span className="text-xl font-bold">SkyWay Admin</span>
+          <Image src="/logo1.png" alt="SkyWay Logo" width={32} height={32} />
+          <span className="text-xl font-bold">Rea Travel Admin</span>
         </Link>
         <div className="relative hidden md:flex md:grow">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />

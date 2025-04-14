@@ -60,6 +60,9 @@ export function StripePaymentForm({
     // Create PaymentIntent as soon as the page loads
     async function createPaymentIntent() {
       try {
+        // Get booking data from session storage if available
+        const bookingData = sessionStorage.getItem("bookingData")
+        
         const response = await fetch("/api/payments", {
           method: "POST",
           headers: {
@@ -70,6 +73,7 @@ export function StripePaymentForm({
             amount,
             currency: currency.toUpperCase(),
             flightId: flightDetails.id,
+            bookingData: bookingData // Send the booking data to the API
           }),
         })
 

@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger"
 export async function POST(request: NextRequest) {
   try {
     // Get user ID from Clerk authentication
-    const { userId } = auth()
+    const { userId } = await auth()
 
     // For development purposes, allow unauthenticated requests
     // In production, you would want to remove this and require authentication
@@ -35,19 +35,80 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if booking exists using Prisma
-    const booking = await prisma.booking.findUnique({
+    let booking = await prisma.booking.findUnique({
       where: { bookingReference: body.bookingReference },
     })
 
+    // If booking doesn't exist, create it from the session data
     if (!booking) {
-      throw createNotFoundError(`Booking with reference ${body.bookingReference} not found`)
-    }
+      // Check if we have all the required data to create a booking
+      if (!body.flightId || !body.bookingData) {
+        throw createValidationError("Missing booking data", {
+          required: ["flightId", "bookingData"],
+          received: Object.keys(body),
+        })
+      }
+      
+      try {
+        // Parse booking data if it's a string
+        const bookingData = typeof body.bookingData === 'string' 
+          ? JSON.parse(body.bookingData) 
+          : body.bookingData;
+        
+        // First check if a booking with this reference already exists (to handle race conditions)
+        booking = await prisma.booking.findUnique({
+          where: { bookingReference: body.bookingReference },
+        });
+        
+        // If still no booking found, create a new one
+        if (!booking) {
+          // Generate a unique booking reference if needed
+          const bookingReference = body.bookingReference;
+          
+          // Create a new booking record
+          booking = await prisma.booking.create({
+            data: {
+              userId: userIdToUse,
+              bookingReference: bookingReference,
+              status: "pending",
+              totalAmount: amount,
+              flightDetails: {
+                ...bookingData.flightDetails,
+                flightId: body.flightId
+              },
+              passengerDetails: bookingData.passengers || [],
+              contactInfo: bookingData.contactInfo || {},
+              extras: bookingData.extras || {}
+            },
+          });
 
-    // Check if booking is in a payable state
-    if (booking.status !== "pending" && booking.status !== "payment_failed") {
-      throw createValidationError(`Cannot process payment for booking in status: ${booking.status}`, {
-        currentStatus: booking.status,
-      })
+          logger.info("Created booking record from client data", {
+            bookingReference: bookingReference,
+            flightId: body.flightId,
+            userId: userIdToUse
+          });
+        } else {
+          logger.info("Using existing booking record", {
+            bookingReference: body.bookingReference,
+            bookingId: booking.id
+          });
+        }
+      } catch (err) {
+        logger.error("Failed to create booking record", { error: err })
+        throw createValidationError("Failed to create booking record", {
+          error: err instanceof Error ? err.message : String(err)
+        })
+      }
+    } else {
+      // Check if booking is in a payable state
+      // Allow payments for pending, payment_pending, and payment_failed statuses
+      const allowedStatuses = ["pending", "payment_pending", "payment_failed"];
+      if (!allowedStatuses.includes(booking.status)) {
+        throw createValidationError(`Cannot process payment for booking in status: ${booking.status}`, {
+          currentStatus: booking.status,
+          allowedStatuses: allowedStatuses,
+        })
+      }
     }
 
     // Create payment intent with Stripe
@@ -97,7 +158,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     // Get user ID from Clerk authentication
-    const { userId } = auth()
+    const { userId } = await auth()
 
     // For development purposes, allow unauthenticated requests
     // In production, you would want to remove this and require authentication

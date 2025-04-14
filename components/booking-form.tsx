@@ -19,12 +19,61 @@ import { SeatSelection } from "@/components/seat-selection"
 import { BaggageOptions } from "@/components/baggage-options"
 import { MealOptions } from "@/components/meal-options"
 
+interface ContactInfoState {
+  email?: string;
+  phone?: string;
+}
+
 export function BookingForm() {
   const router = useRouter()
   const pathname = usePathname()
   const { isSignedIn } = useAuth()
   const [currentStep, setCurrentStep] = useState(1)
   const [passengerCount, setPassengerCount] = useState(1)
+
+  // --- Add State Variables Start ---
+  const [passengers, setPassengers] = useState<any[]>([]); // State for passenger details
+  const [contactInfo, setContactInfo] = useState<ContactInfoState>({}); // State for contact info
+  const [selectedSeats, setSelectedSeats] = useState<any>({}); // State for seat selection
+  const [selectedBaggage, setSelectedBaggage] = useState<any>({}); // State for baggage options
+  const [selectedMeals, setSelectedMeals] = useState<any>({}); // State for meal options
+  const [pricingDetails, setPricingDetails] = useState<any>({}); // State for pricing details
+  // --- Add State Variables End ---
+
+  // --- Add Handler for Passenger Changes ---
+  const handlePassengerChange = (index: number, updatedData: any) => {
+    setPassengers(prev => {
+      const newPassengers = [...prev];
+      // Ensure the array is long enough
+      while (newPassengers.length <= index) {
+        newPassengers.push({});
+      }
+      newPassengers[index] = { ...newPassengers[index], ...updatedData };
+      return newPassengers;
+    });
+  };
+
+  // --- Add Handler for Contact Info Changes ---
+  const handleContactInfoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setContactInfo((prev: ContactInfoState) => ({ ...prev, [id]: value }));
+  };
+
+  // --- Add Handler for Seat Selection Changes ---
+  const handleSeatChange = (flightType: 'outbound' | 'return', updatedSeats: any) => {
+    setSelectedSeats((prev: any) => ({ ...prev, [flightType]: updatedSeats }));
+  };
+
+  // --- Add Handler for Baggage Changes ---
+  const handleBaggageChange = (updatedBaggage: any) => {
+    setSelectedBaggage(updatedBaggage);
+  };
+
+  // --- Add Handler for Meal Changes ---
+  const handleMealChange = (updatedMeals: any) => {
+    setSelectedMeals(updatedMeals);
+  };
+  // --- End Handlers ---
 
   const steps = [
     { id: 1, name: "Passenger Details" },
@@ -47,6 +96,73 @@ export function BookingForm() {
 
   const handleContinueToPayment = () => {
     const flightId = pathname.split("/")[2]
+
+    // Create booking data to store in session storage
+    const bookingData = {
+      bookingReference: `REA-${Math.floor(Math.random() * 10000000)}`,
+      flightId: flightId,
+      id: flightId,
+      totalAmount: pricingDetails?.total || 0,
+      status: "pending",
+      flightDetails: { 
+        // TODO: Fetch or pass real flight details if needed, using dummy for now
+        outbound: {
+          departure: {
+            city: "New York",
+            airport: "JFK",
+            date: "2025-05-15",
+            time: "08:30",
+            fullDate: "May 15, 2025"
+          },
+          arrival: {
+            city: "London",
+            airport: "LHR",
+            date: "2025-05-15",
+            time: "20:45",
+            fullDate: "May 15, 2025"
+          },
+          airline: {
+            name: "Rea Airways",
+            code: "RA",
+            flightNumber: "1234"
+          }
+        },
+        return: {
+          departure: {
+            city: "London",
+            airport: "LHR",
+            date: "2025-05-22",
+            time: "10:15",
+            fullDate: "May 22, 2025"
+          },
+          arrival: {
+            city: "New York",
+            airport: "JFK",
+            date: "2025-05-22",
+            time: "13:30",
+            fullDate: "May 22, 2025"
+          },
+          airline: {
+            name: "Rea Airways",
+            code: "RA",
+            flightNumber: "4321"
+          }
+        }
+      },
+      passengers: passengers,
+      contactInfo: contactInfo,
+      extras: {
+        seats: selectedSeats,
+        baggage: selectedBaggage,
+        meals: selectedMeals,
+        additionalServices: []
+      },
+      pricing: pricingDetails
+    }
+
+    // Store booking data in session storage
+    sessionStorage.setItem("bookingReference", bookingData.bookingReference)
+    sessionStorage.setItem("bookingData", JSON.stringify(bookingData))
 
     if (isSignedIn) {
       router.push(`/flights/${flightId}/payment`)
@@ -132,7 +248,11 @@ export function BookingForm() {
 
                   {Array.from({ length: passengerCount }).map((_, index) => (
                     <TabsContent key={index} value={`passenger-${index + 1}`}>
-                      <PassengerForm passengerNumber={index + 1} />
+                      <PassengerForm
+                        passengerNumber={index + 1}
+                        passengerData={passengers[index] || {}} // Pass current data or empty object
+                        onPassengerChange={(updatedData) => handlePassengerChange(index, updatedData)} // Pass update handler
+                      />
                     </TabsContent>
                   ))}
                 </Tabs>
@@ -143,14 +263,26 @@ export function BookingForm() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" type="email" placeholder="your.email@example.com" />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="your.email@example.com"
+                      value={contactInfo.email || ''} // Bind value to state
+                      onChange={handleContactInfoChange} // Add onChange handler
+                    />
                     <p className="text-xs text-muted-foreground">
                       Your booking confirmation will be sent to this email
                     </p>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="+1 (555) 123-4567" />
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+1 (555) 123-4567"
+                      value={contactInfo.phone || ''} // Bind value to state
+                      onChange={handleContactInfoChange} // Add onChange handler
+                    />
                     <p className="text-xs text-muted-foreground">For urgent notifications about your flight</p>
                   </div>
                 </div>
@@ -169,14 +301,22 @@ export function BookingForm() {
               <div className="space-y-6">
                 <div>
                   <h4 className="mb-2 text-base font-medium">Outbound Flight</h4>
-                  <SeatSelection />
+                  <SeatSelection 
+                    flightType="outbound"
+                    selectedSeats={selectedSeats.outbound || []} 
+                    onSeatChange={handleSeatChange} 
+                  />
                 </div>
 
                 <Separator />
 
                 <div>
                   <h4 className="mb-2 text-base font-medium">Return Flight</h4>
-                  <SeatSelection />
+                  <SeatSelection 
+                    flightType="return"
+                    selectedSeats={selectedSeats.return || []} 
+                    onSeatChange={handleSeatChange} 
+                  />
                 </div>
               </div>
             </div>
@@ -193,14 +333,20 @@ export function BookingForm() {
               <div className="space-y-6">
                 <div>
                   <h4 className="mb-2 text-base font-medium">Baggage Options</h4>
-                  <BaggageOptions />
+                  <BaggageOptions 
+                    selectedBaggage={selectedBaggage} 
+                    onBaggageChange={handleBaggageChange} 
+                  />
                 </div>
 
                 <Separator />
 
                 <div>
                   <h4 className="mb-2 text-base font-medium">Meal Preferences</h4>
-                  <MealOptions />
+                  <MealOptions 
+                    selectedMeals={selectedMeals} 
+                    onMealChange={handleMealChange} 
+                  />
                 </div>
 
                 <Separator />
@@ -399,4 +545,3 @@ export function BookingForm() {
     </div>
   )
 }
-

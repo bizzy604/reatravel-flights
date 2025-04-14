@@ -1,32 +1,33 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
 interface MealOptionsProps {
-  onChange?: (meals: { outbound: string; return: string }) => void
+  selectedMeals: any; // Expects object like { outbound: string, return: string }
+  onMealChange: (updatedMeals: any) => void;
 }
 
-export function MealOptions({ onChange }: MealOptionsProps) {
-  const [outboundMeal, setOutboundMeal] = useState("standard")
-  const [returnMeal, setReturnMeal] = useState("standard")
+export function MealOptions({ selectedMeals, onMealChange }: MealOptionsProps) {
+  const outboundMeal = selectedMeals?.outbound ?? 'standard';
+  const returnMeal = selectedMeals?.return ?? 'standard';
 
-  // Update parent component when values change
-  useEffect(() => {
-    if (onChange) {
-      onChange({
-        outbound: outboundMeal.charAt(0).toUpperCase() + outboundMeal.slice(1),
-        return: returnMeal.charAt(0).toUpperCase() + returnMeal.slice(1),
-      })
-    }
-  }, [outboundMeal, returnMeal, onChange])
+  const handleOutboundChange = (value: string) => {
+    onMealChange({ ...selectedMeals, outbound: value });
+  };
+
+  const handleReturnChange = (value: string) => {
+    onMealChange({ ...selectedMeals, return: value });
+  };
 
   return (
     <div className="space-y-4">
       <div className="rounded-md border p-4">
         <h4 className="mb-2 text-sm font-medium">Outbound Flight Meal</h4>
-        <RadioGroup defaultValue="standard" value={outboundMeal} onValueChange={setOutboundMeal}>
+        <RadioGroup 
+          value={outboundMeal} 
+          onValueChange={handleOutboundChange}
+        >
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="standard" id="meal-standard-out" />
             <div>
@@ -74,7 +75,10 @@ export function MealOptions({ onChange }: MealOptionsProps) {
 
       <div className="rounded-md border p-4">
         <h4 className="mb-2 text-sm font-medium">Return Flight Meal</h4>
-        <RadioGroup defaultValue="standard" value={returnMeal} onValueChange={setReturnMeal}>
+        <RadioGroup 
+          value={returnMeal} 
+          onValueChange={handleReturnChange}
+        >
           <div className="flex items-start space-x-3">
             <RadioGroupItem value="standard" id="meal-standard-return" />
             <div>
