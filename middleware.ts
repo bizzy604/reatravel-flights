@@ -11,6 +11,7 @@ const isPublicRoute = createRouteMatcher([
   '/about',
   '/contact',
   '/api/flights/search',
+  '/api/flights/search-advanced',
   '/api/health',
   '/api/payments/webhook',
   "/api/seed",
@@ -35,13 +36,11 @@ export default clerkMiddleware(async (auth, req) => {
   if (isAdminRoute(req)) {
     try {
       // First check if user is authenticated
-      const session = await auth.protect();
+      await auth.protect(); // Use auth.protect directly
   
-      // Then check if they have admin role - Try all possible paths
-      const isAdmin = 
-        auth.user?.publicMetadata?.role === 'admin' || 
-        auth.actor?.publicMetadata?.role === 'admin' ||
-        session?.user?.publicMetadata?.role === 'admin';
+      // Then check if they have admin role using the imported auth() function
+      const { sessionClaims } = await auth(); // Await the imported auth() function
+      const isAdmin = sessionClaims?.publicMetadata?.role === 'admin';
       
       console.log("Is admin?", isAdmin);
       
@@ -55,7 +54,7 @@ export default clerkMiddleware(async (auth, req) => {
     }
   } else {
     // For non-admin protected routes, just check authentication
-    await auth.protect();
+    await auth.protect(); // Use auth.protect directly
   }
 
   return NextResponse.next();
