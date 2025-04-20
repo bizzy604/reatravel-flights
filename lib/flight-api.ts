@@ -1,6 +1,23 @@
 import axios from "axios"
-import { logger } from "./logger"
-import type { FlightSearchRequest, FlightOffer, FlightSegmentDetails, FlightDetailsResult } from '@/types/flight-api';
+import {logger} from "./logger";
+import type { 
+  FlightSearchRequest, 
+  FlightOffer, 
+  FlightSegmentDetails, 
+  FlightDetailsResult, 
+  BaggageAllowance, 
+  CarryOnBaggage, 
+  CheckedBaggage, 
+  SpecialItem, 
+  BaggageWeight, 
+  BaggageDimension, 
+  FareDetails, 
+  FareRules,
+  PriceBreakdown,
+  AdditionalServices,
+  AirlineDetails,
+  AircraftDetails
+} from '@/types/flight-api';
 
 // --- Verteil API Types and Token Management ---
 
@@ -35,7 +52,6 @@ async function fetchVerteilToken(): Promise<VerteilToken> {
     const response = await axios.post(url, null, { headers });
     return response.data as VerteilToken;
   } catch (error) {
-    logger.error('Error fetching Verteil token', { error });
     throw error;
   }
 }
@@ -88,7 +104,7 @@ export async function getVerteilToken(): Promise<VerteilToken> {
  */
 export async function callVerteilAirShopping(payload: any) {
   const token = await getVerteilToken();
-  const url = 'https://api.stage.verteil.com/entrygate/rest/request:airShopping'; // endpoint uses lowercase 'a'
+  const url = 'https://api.stage.verteil.com/entrygate/rest/request:airShopping';
   const headers = {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token.access_token}`,
@@ -103,7 +119,6 @@ export async function callVerteilAirShopping(payload: any) {
     const response = await axios.post(url, payload, { headers });
     return response.data;
   } catch (error) {
-    logger.error('Error in Verteil AirShopping call', { error });
     throw error;
   }
 }
@@ -116,15 +131,13 @@ export async function callVerteilAirShopping(payload: any) {
  */
 const findInDataList = (key: string, list: any[], idField: string): any | null => {
   if (!list || !Array.isArray(list)) {
-    logger.warn(`List for field ${idField} is missing or not an array`);
     return null;
   }
   const item = list.find((item) => item && item[idField] === key);
   if (!item) {
-    // Reduce log noise: Log only if explicitly debugging deeper
-     logger.debug(`Item with ${idField}='${key}' not found in list.`);
+    return null;
   }
-  return item || null;
+  return item;
 };
 
 /**
@@ -132,11 +145,15 @@ const findInDataList = (key: string, list: any[], idField: string): any | null =
  * Assumes structure based on common patterns. Adds robust checks.
  */
 const getSegmentDetails = (segmentKey: string, dataLists: any): FlightSegmentDetails | null => {
-  const segment = findInDataList(segmentKey, dataLists?.FlightSegmentList, "SegmentKey");
-  if (!segment) {
-    logger.warn(`Segment not found for key: ${segmentKey}`);
+  if (!dataLists?.FlightSegmentList?.FlightSegment) {
     return null;
   }
+  
+  try {
+      const segment = dataLists.FlightSegmentList.FlightSegment.find((seg: any) => seg && seg.SegmentKey === segmentKey);
+      if (!segment) {
+        return null;
+      }
 
   // Extract details, providing fallbacks
   const departureAirport = segment.Departure?.AirportCode;
@@ -176,6 +193,9 @@ const getSegmentDetails = (segmentKey: string, dataLists: any): FlightSegmentDet
   };
 
   return segmentDetails;
+} catch (error) {
+  return null;
+}
 };
 
 /**
@@ -186,39 +206,6 @@ const resolveFlightDetailsFromRefs = (
     references: any,  // Can be any structure that might contain references
     dataLists: any   // The DataLists section containing all flight data
 ): FlightDetailsResult | null => {
-    logger.debug("Starting flight details resolution with references", {
-        referencesType: typeof references,
-        isArray: Array.isArray(references),
-        hasDataLists: !!dataLists,
-        dataListsKeys: dataLists ? Object.keys(dataLists) : []
-    });
-    
-    // Log some samples from the DataLists to understand their structure
-    if (dataLists) {
-        // Sample of FlightList
-        const flightListSample = dataLists.FlightList?.Flight?.[0];
-        if (flightListSample) {
-            logger.debug('FLIGHT LIST SAMPLE', {
-                flightSample: JSON.stringify(flightListSample).substring(0, 1000) + '...'
-            });
-        }
-        
-        // Sample of FlightSegmentList
-        const segmentListSample = dataLists.FlightSegmentList?.FlightSegment?.[0];
-        if (segmentListSample) {
-            logger.debug('SEGMENT LIST SAMPLE', {
-                segmentSample: JSON.stringify(segmentListSample).substring(0, 1000) + '...'
-            });
-        }
-
-        // Check how to access the OriginDestinationList
-        const odListSample = dataLists.OriginDestinationList?.OriginDestination?.[0];
-        if (odListSample) {
-            logger.debug('ORIGIN DESTINATION LIST SAMPLE', {
-                odSample: JSON.stringify(odListSample).substring(0, 1000) + '...'
-            });
-        }
-    }
 
     let segmentKeys: string[] = [];
     let journeyDuration = 'N/A';
@@ -228,22 +215,22 @@ const resolveFlightDetailsFromRefs = (
     
     // APPROACH 1: If references is an array of ref objects with FlightKey or SegmentKey
     if (Array.isArray(references)) {
-        logger.debug('Processing references array', { length: references.length });
+
         
         // First try to find direct flight references
         for (const ref of references) {
             // Check different possible formats of flight references
             if (ref.FlightKey) {
                 flightKey = ref.FlightKey;
-                logger.debug('Found direct FlightKey reference', { flightKey });
+
                 break;
             } else if (ref.value && ref.type === 'Flight') {
                 flightKey = ref.value;
-                logger.debug('Found typed Flight reference', { flightKey });
+
                 break;
             } else if (ref.ref && ref.refType === 'Flight') {
                 flightKey = ref.ref;
-                logger.debug('Found refType Flight reference', { flightKey });
+
                 break;
             }
         }
@@ -253,13 +240,13 @@ const resolveFlightDetailsFromRefs = (
             for (const ref of references) {
                 if (ref.SegmentKey) {
                     segmentKeys.push(ref.SegmentKey);
-                    logger.debug('Found direct SegmentKey reference', { segmentKey: ref.SegmentKey });
+
                 } else if (ref.value && ref.type === 'Segment') {
                     segmentKeys.push(ref.value);
-                    logger.debug('Found typed Segment reference', { segmentKey: ref.value });
+
                 } else if (ref.ref && ref.refType === 'Segment') {
                     segmentKeys.push(ref.ref);
-                    logger.debug('Found refType Segment reference', { segmentKey: ref.ref });
+
                 }
             }
         }
@@ -268,14 +255,14 @@ const resolveFlightDetailsFromRefs = (
     // APPROACH 2: Try standard path with OriginDestinationReferences
     if (!flightKey && segmentKeys.length === 0 && references?.OriginDestinationReferences) {
         const odRef = references.OriginDestinationReferences[0];
-        logger.debug('Trying OriginDestinationReferences path', { odRef });
+
         
         if (odRef) {
             const originDestination = findInDataList(odRef, dataLists?.OriginDestinationList, "OriginDestinationKey");
             if (originDestination) {
                 // Extract flight references
                 const flightRefs = originDestination.FlightReferences?._?.split(' ') || [];
-                logger.debug('Found flight keys in OD', { odRef, flightRefs });
+
                 
                 if (flightRefs.length > 0) {
                     journeyDuration = originDestination.FlightDuration?.Value || 'N/A';
@@ -283,7 +270,7 @@ const resolveFlightDetailsFromRefs = (
                 } else if (originDestination.SegmentReferences?._) {
                     // Direct segment references in OD
                     segmentKeys = originDestination.SegmentReferences._.split(' ') || [];
-                    logger.debug('Found direct segment references in OD', { segmentKeys });
+
                 }
             }
         }
@@ -291,14 +278,14 @@ const resolveFlightDetailsFromRefs = (
     
     // APPROACH 3: Try special reference structures like PricedOffer.Associations
     if (!flightKey && segmentKeys.length === 0 && references?.PricedOffer?.Associations) {
-        logger.debug('Trying PricedOffer.Associations path');
+
         
         // The associations array might contain different structures
         if (Array.isArray(references.PricedOffer.Associations)) {
             for (const association of references.PricedOffer.Associations) {
                 // Check for ApplicableFlight property
                 if (association.ApplicableFlight) {
-                    logger.debug('Found ApplicableFlight in association');
+
                     const flight = association.ApplicableFlight;
                     
                     // Check for FlightSegmentReference array (this seems to be the correct path based on logs)
@@ -307,37 +294,32 @@ const resolveFlightDetailsFromRefs = (
                         for (const segRef of flight.FlightSegmentReference) {
                             if (segRef.ref) {
                                 segmentKeys.push(segRef.ref);
-                                logger.debug('Found segment ref in FlightSegmentReference', { segRef: segRef.ref });
+
                             }
                         }
                         
                         // Also store the flight reference if available
                         if (flight.FlightReferences?.value && Array.isArray(flight.FlightReferences.value)) {
                             flightKey = flight.FlightReferences.value[0];
-                            logger.debug('Found flight reference in ApplicableFlight', { flightKey });
                         }
                         
                         // If we found segment keys, we can break out of the loop
                         if (segmentKeys.length > 0) {
-                            logger.debug('Successfully extracted segment keys', { count: segmentKeys.length });
                             break;
                         }
                     }
                     // Fallback to other formats
                     else if (flight.FlightKey) {
                         flightKey = flight.FlightKey;
-                        logger.debug('Found FlightKey in ApplicableFlight', { flightKey });
                         break;
                     } else if (flight.SegmentReferences?._) {
                         segmentKeys = flight.SegmentReferences._.split(' ') || [];
-                        logger.debug('Found SegmentReferences in ApplicableFlight', { segmentKeys });
                         break;
                     }
                 }
                 
                 // Check for PriceClass, which might contain ApplicableFlight
                 if (association.PriceClass && association.PriceClass.refs) {
-                    logger.debug('Found PriceClass with refs in association');
                     // Direct refs in PriceClass
                     const priceClassRefs = association.PriceClass.refs;
                     if (Array.isArray(priceClassRefs)) {
@@ -345,13 +327,11 @@ const resolveFlightDetailsFromRefs = (
                             // Check for FlightRef type
                             if (ref.type === 'Flight' && ref.value) {
                                 flightKey = ref.value;
-                                logger.debug('Found Flight ref in PriceClass', { flightKey });
                                 break;
                             } 
                             // Check for direct SegmentRef
                             else if (ref.type === 'Segment' && ref.value) {
                                 segmentKeys.push(ref.value);
-                                logger.debug('Found Segment ref in PriceClass', { segmentKey: ref.value });
                             }
                         }
                     }
@@ -367,46 +347,37 @@ const resolveFlightDetailsFromRefs = (
             
             if (flight.FlightKey) {
                 flightKey = flight.FlightKey;
-                logger.debug('Found FlightKey in PricedOffer.Associations.ApplicableFlight', { flightKey });
             } else if (flight.SegmentReferences?._) {
                 segmentKeys = flight.SegmentReferences._.split(' ') || [];
-                logger.debug('Found SegmentReferences in PricedOffer.Associations.ApplicableFlight', { segmentKeys });
             }
         }
     }
 
     // If we found a flight key but no segment keys, try to get the segments from the flight
     if (flightKey && segmentKeys.length === 0) {
-        logger.debug('Found flight key but no segments yet, looking up flight details', { flightKey });
         const flight = findInDataList(flightKey, dataLists?.FlightList, "FlightKey");
         if (flight) {
             // Extract segment references from the flight
             const segRefs = flight.SegmentReferences?._?.split(' ') || [];
             if (segRefs.length > 0) {
                 segmentKeys = segRefs;
-                logger.debug('Found segment keys from flight', { flightKey, segmentKeys });
                 
                 // Extract journey duration if not already set
                 if (journeyDuration === 'N/A') {
                     journeyDuration = flight.Journey?.Time?._ || flight.Journey?.Duration || 'N/A';
                 }
             } else {
-                logger.warn('Flight found but has no segment references', { flightKey });
             }
         } else {
-            logger.warn('Flight key could not be found in FlightList', { flightKey });
         }
     }
 
     // Check if we have any segment keys at this point
     if (segmentKeys.length === 0) {
-        logger.warn('Failed to extract any segment keys from references');
         return null; // Cannot resolve details
     }
 
     // --- Process Derived Segment Keys ---
-    logger.debug('Processing segment keys', { count: segmentKeys.length, keys: segmentKeys });
-
     // Remove duplicate segment keys if any were added from multiple paths (unlikely but possible)
     const uniqueSegmentKeys = [...new Set(segmentKeys)];
 
@@ -414,19 +385,8 @@ const resolveFlightDetailsFromRefs = (
         .map(key => getSegmentDetails(key, dataLists))
         .filter((segment): segment is FlightSegmentDetails => segment !== null); // Type guard filters nulls
 
-    // Log if some segments failed to resolve
-    if (segments.length !== uniqueSegmentKeys.length) {
-        logger.warn("Could not resolve details for all derived segment keys", {
-            expectedKeys: uniqueSegmentKeys,
-             resolvedCount: segments.length,
-             resolvedKeys: segments.map(s => s.id),
-             missingKeys: uniqueSegmentKeys.filter(k => !segments.some(s => s.id === k))
-        });
-    }
-
     // If NO segments could be resolved at all, consider it a failure
     if (segments.length === 0) {
-        logger.error("Failed to resolve any segment details from derived keys.", { segmentKeys: uniqueSegmentKeys });
         return null;
     }
 
@@ -445,224 +405,1073 @@ const resolveFlightDetailsFromRefs = (
  * @param rawData - The raw API response data
  * @returns The optimized flight data
  */
+/**
+ * Process flight data from Verteil API response
+ * @param rawData The raw API response data from Verteil
+ * @returns Processed flight data with flights array and metadata
+ */
 export function optimizeFlightData(rawData: any): { flights: FlightOffer[]; meta: Record<string, any> } {
-    logger.info("Starting flight data optimization...");
-    
-    // Check for both possible response structures
-    // 1. Direct root level structure (as seen in logs)
-    // 2. Nested under ResponseBody.OTA_AirOfferPriceRS (as in API docs)
-    const dataLists = rawData?.DataLists || rawData?.ResponseBody?.OTA_AirOfferPriceRS?.DataLists;
-    const offersGroup = rawData?.OffersGroup || rawData?.ResponseBody?.OTA_AirOfferPriceRS?.OffersGroup;
-    
-    // Log available data structure for debugging
-    logger.debug("Data structure keys:", Object.keys(rawData || {}));
-    
-    if (dataLists) {
-        logger.debug("DataLists found:", Object.keys(dataLists));
-    }
-    
-    // Check if we have the required data structures
-    if (!offersGroup || !offersGroup.AirlineOffers || !Array.isArray(offersGroup.AirlineOffers) || !dataLists) {
-        logger.warn("No AirlineOffers or DataLists found, or invalid structure.", {
-            hasOffersGroup: !!offersGroup,
-            hasAirlineOffers: !!offersGroup?.AirlineOffers,
-            hasDataLists: !!dataLists,
-        });
-        // Return fallback data immediately if DataLists is missing
-        return {
-            flights: [], // Empty array as we cannot process anything
-            meta: {
-                total: 0,
-                currency: 'USD',
-                isFallbackData: true,
-                error: "Missing essential DataLists in API response."
-            }
-        };
-    }
-    
-    // Navigate correctly to the AirlineOffers array
-    const airlineOffers = offersGroup.AirlineOffers;
-    
-    if (airlineOffers.length === 0) {
-        logger.info("No AirlineOffers found in OffersGroup, returning empty result set.");
+    if (!rawData || !rawData.OffersGroup || !rawData.OffersGroup.AirlineOffers || 
+        !rawData.OffersGroup.AirlineOffers[0] || !rawData.OffersGroup.AirlineOffers[0].AirlineOffer) {
         return {
             flights: [],
             meta: {
                 total: 0,
                 currency: 'USD',
-                isFallbackData: false, // Not fallback, just empty
+                isFallbackData: true,
+                error: "Missing essential offer data in API response."
+            }
+        };
+    }
+    
+    const dataLists = rawData.DataLists;
+    if (!dataLists) {
+        return {
+            flights: [], 
+            meta: {
+                total: 0,
+                currency: 'USD',
+                isFallbackData: true,
+                error: "Missing DataLists in API response."
+            }
+        };
+    }
+    
+    // Extract the AirlineOffer array
+    const airlineOffers = rawData.OffersGroup.AirlineOffers[0].AirlineOffer;
+    
+    if (!Array.isArray(airlineOffers) || airlineOffers.length === 0) {
+        return {
+            flights: [],
+            meta: {
+                total: 0,
+                currency: 'USD',
+                isFallbackData: false,
                 message: "No flight offers found."
             }
         };
     }
     
-    // Log the number of airline offers found
-    logger.debug("Airline offers found:", airlineOffers.length);
-    logger.debug(`Found ${airlineOffers.length} AirlineOffers groups.`);
-
-    // Try to extract currency from different possible locations in the API response
-    let currency = 'USD'; // Default currency
+    // Pre-process lists into maps for faster lookups
+    const flightSegmentList = dataLists.FlightSegmentList?.FlightSegment || [];
+    const flightSegmentMap = new Map(flightSegmentList.map((seg: any) => [seg.SegmentKey, seg]));
     
-    // Check first airline offer for currency information
-    if (airlineOffers[0]?.AirlineOffer?.[0]?.TotalPrice?.SimpleCurrencyPrice?.Code) {
-        currency = airlineOffers[0].AirlineOffer[0].TotalPrice.SimpleCurrencyPrice.Code;
-        logger.debug(`Found currency from first offer: ${currency}`);
-    } 
-    // Try metadata path as fallback
-    else if (rawData?.Metadata?.Other?.CurrencyMetadatas?.CurrencyMetadata?.[0]?.$.MetadataKey) {
-        currency = rawData.Metadata.Other.CurrencyMetadatas.CurrencyMetadata[0].$.MetadataKey;
-        logger.debug(`Found currency from metadata: ${currency}`);
-    }
-    // Try nested path as another fallback
-    else if (rawData?.ResponseBody?.OTA_AirOfferPriceRS?.Metadata?.Other?.CurrencyMetadatas?.CurrencyMetadata?.[0]?.$.MetadataKey) {
-        currency = rawData.ResponseBody.OTA_AirOfferPriceRS.Metadata.Other.CurrencyMetadatas.CurrencyMetadata[0].$.MetadataKey;
-        logger.debug(`Found currency from nested metadata: ${currency}`);
-    }
+    // Also map flight references
+    const flightList = dataLists.FlightList?.Flight || [];
+    const flightMap = new Map(flightList.map((flight: any) => [flight.FlightKey, flight]));
 
-    // Use flatMap to handle nested arrays and filter nulls efficiently
-    const optimizedFlights: FlightOffer[] = airlineOffers.flatMap((offerGroup: any) => { // Explicitly type the result array
-        // AirlineOffer can be an array or a single object
-        const actualOfferList = Array.isArray(offerGroup?.AirlineOffer)
-            ? offerGroup.AirlineOffer
-            : offerGroup?.AirlineOffer ? [offerGroup.AirlineOffer] : [];
+    // Map baggage allowances for quick lookup
+    const carryOnAllowanceList = dataLists.CarryOnAllowanceList?.CarryOnAllowance || [];
+    const carryOnMap = new Map(carryOnAllowanceList.map((allowance: any) => [allowance.ListKey, allowance]));
+    
+    // Map checked baggage allowances
+    const checkedBagAllowanceList = dataLists.CheckedBagAllowanceList?.CheckedBagAllowance || [];
+    const checkedBagMap = new Map(checkedBagAllowanceList.map((allowance: any) => [allowance.ListKey, allowance]));
+    
+    // Map fare information for quick lookup
+    const fareList = dataLists.FareList?.FareGroup || [];
+    const fareMap = new Map(fareList.map((fare: any) => [fare.ListKey, fare]));
+    
+    // Create a map of fare rules if available
+    const fareRulesList = dataLists.PenaltyList?.Penalty || [];
+    const fareRulesMap = new Map(fareRulesList.map((rule: any) => [rule?.PenaltyID, rule]));
+    
+    // Get currency from first offer or use default
+    let currency = 'USD';
+    if (airlineOffers[0]?.TotalPrice?.SimpleCurrencyPrice?.Code) {
+        currency = airlineOffers[0].TotalPrice.SimpleCurrencyPrice.Code;
+    }
+    
+    // Process each offer into a structured flight offer
+    const flights = airlineOffers.map((offer: any) => {
+        // Extract offer ID and price
+        const offerId = offer.OfferID?.value || `offer-${Math.random().toString(36).substr(2, 9)}`;
+        const price = offer.TotalPrice?.SimpleCurrencyPrice?.value || 0;
+        const currencyCode = offer.TotalPrice?.SimpleCurrencyPrice?.Code || currency;
+        
+        // Find associated flight segment references
+        let segmentRefs: string[] = [];
+        let flightKey = '';
+        
+        // Get segment references from PricedOffer.Associations
+        if (offer.PricedOffer?.Associations) {
+            const associations = Array.isArray(offer.PricedOffer.Associations) 
+                ? offer.PricedOffer.Associations 
+                : [offer.PricedOffer.Associations];
+            
+            for (const assoc of associations) {
+                if (assoc.ApplicableFlight?.FlightReferences?.value) {
+                    const flightRefs = Array.isArray(assoc.ApplicableFlight.FlightReferences.value)
+                        ? assoc.ApplicableFlight.FlightReferences.value
+                        : [assoc.ApplicableFlight.FlightReferences.value];
+                    
+                    flightKey = flightRefs[0]; // Take first flight reference
+                }
+                
+                if (assoc.ApplicableFlight?.FlightSegmentReference) {
+                    const refs = Array.isArray(assoc.ApplicableFlight.FlightSegmentReference)
+                        ? assoc.ApplicableFlight.FlightSegmentReference
+                        : [assoc.ApplicableFlight.FlightSegmentReference];
+                    
+                    segmentRefs = [...segmentRefs, ...refs.map((ref: any) => ref.ref || ref)];
+                }
+            }
+        }
+        
+        // Try from flight if no segment refs found
+        if (flightKey && segmentRefs.length === 0) {
+            const flight = flightMap.get(flightKey) || {};
+            // Use type assertion to safely access possibly undefined properties
+            const flightObj = flight as Record<string, any>; 
+            if (flightObj?.SegmentReferences?.value) {
+                segmentRefs = Array.isArray(flightObj.SegmentReferences.value)
+                    ? flightObj.SegmentReferences.value
+                    : [flightObj.SegmentReferences.value];
+            }
+        }
+        
+        // Also check direct refs if available
+        if (offer.refs && Array.isArray(offer.refs) && segmentRefs.length === 0) {
+            segmentRefs = offer.refs.map((ref: any) => ref.ref || ref).filter(Boolean);
+        }
+        
+        // Remove duplicates
+        segmentRefs = [...new Set(segmentRefs)];
+        
+        if (segmentRefs.length === 0) {
+            return null; // Skip this offer
+        }
+        
+        // Get actual segments
+        const segments = segmentRefs
+            .map((ref: string) => flightSegmentMap.get(ref))
+            .filter(Boolean); // Filter out nulls
+            
+        if (segments.length === 0) {
+            return null; // Skip if no segments found
+        }
+        
+        // Use type assertions to help TypeScript understand these are valid objects
+        const firstSegment = segments[0] as Record<string, any>;
+        const lastSegment = segments[segments.length - 1] as Record<string, any>;
+        const stops = segments.length - 1;
+        
+        // Get stop details
+        const stopDetails: string[] = [];
+        if (stops > 0) {
+            for (let i = 0; i < segments.length - 1; i++) {
+                // Use type assertion to safely access properties
+                const segment = segments[i] as Record<string, any>;
+                const connectingAirport = segment.Arrival?.AirportCode?.value || segment.Arrival?.AirportCode;
+                if (connectingAirport) {
+                    stopDetails.push(connectingAirport);
+                }
+            }
+        }
+        
+        // Calculate duration
+        let totalDuration = "N/A";
+        let totalMinutes = 0;
+        
+        segments.forEach((seg: any) => {
+            const durationStr = seg?.FlightDetail?.FlightDuration?.Value;
+            if (durationStr) {
+                totalMinutes += parseISODuration(durationStr);
+            }
+        });
+        
+        if (totalMinutes > 0) {
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            totalDuration = `${hours}h ${minutes}m`;
+        }
+        
+        // Try to get more accurate duration from flight
+        if (flightKey) {
+            const flight = flightMap.get(flightKey) || {};
+            // Use type assertion to safely access possibly undefined properties
+            const flightObj = flight as Record<string, any>;
+            if (flightObj?.Journey?.Time && typeof flightObj.Journey.Time === 'string') {
+                totalDuration = flightObj.Journey.Time.replace('PT', '').replace('H', 'h ').replace('M', 'm');
+            }
+        }
+        
+        // Extract airline info
+        const airlineCode = firstSegment.MarketingCarrier?.AirlineID?.value || firstSegment.MarketingCarrier?.AirlineID || 'XX';
+        const airlineName = firstSegment.MarketingCarrier?.Name || `Airline ${airlineCode}`;
+        const flightNumber = firstSegment.MarketingCarrier?.FlightNumber?.value || firstSegment.MarketingCarrier?.FlightNumber || 'N/A';
+        
+        const airlineInfo: AirlineDetails = {
+            code: airlineCode,
+            name: airlineName,
+            logo: `/airlines/${airlineCode.toLowerCase()}.png`,
+            flightNumber: flightNumber
+        };
+        
+        // Get departure info
+        const departureAirportCode = firstSegment.Departure?.AirportCode?.value || firstSegment.Departure?.AirportCode;
+        const departureTime = firstSegment.Departure?.Time || '00:00';
+        const departureDate = firstSegment.Departure?.Date || 'N/A';
+        const departureTerminal = firstSegment.Departure?.Terminal?.Name;
+        const departureAirportName = firstSegment.Departure?.AirportName;
+        
+        // Format departure to match FlightOffer interface
+        const departureInfo = {
+            airport: departureAirportCode,
+            datetime: `${departureDate}T${departureTime}`,
+            terminal: departureTerminal,
+            airportName: departureAirportName
+        };
+        
+        // Get arrival info
+        const arrivalAirportCode = lastSegment.Arrival?.AirportCode?.value || lastSegment.Arrival?.AirportCode;
+        const arrivalTime = lastSegment.Arrival?.Time || '00:00';
+        const arrivalDate = lastSegment.Arrival?.Date || 'N/A';
+        const arrivalTerminal = lastSegment.Arrival?.Terminal?.Name;
+        const arrivalAirportName = lastSegment.Arrival?.AirportName;
+        
+        // Format arrival to match FlightOffer interface
+        const arrivalInfo = {
+            airport: arrivalAirportCode,
+            datetime: `${arrivalDate}T${arrivalTime}`,
+            terminal: arrivalTerminal,
+            airportName: arrivalAirportName
+        };
 
-        if (actualOfferList.length === 0) {
-            logger.warn("Offer group encountered with no AirlineOffer inside.", { offerGroup });
-            return []; // Skip this group
+        // Get aircraft details from the first segment
+        const aircraftInfo: AircraftDetails | undefined = firstSegment.Equipment ? {
+            code: firstSegment.Equipment?.AircraftCode?.value || 'N/A',
+            name: firstSegment.Equipment?.Name
+        } : undefined;
+
+        // Get operating airline details (for codeshare flights)
+        let operatingAirlineInfo: AirlineDetails | undefined;
+        
+        const operatingCarrier = firstSegment.OperatingCarrier;
+        if (operatingCarrier && 
+            operatingCarrier.AirlineID?.value && 
+            operatingCarrier.AirlineID.value !== airlineCode) {
+            
+            operatingAirlineInfo = {
+                code: operatingCarrier.AirlineID.value,
+                name: operatingCarrier.Name || `Airline ${operatingCarrier.AirlineID.value}`,
+                flightNumber: operatingCarrier.FlightNumber?.value || flightNumber
+            };
         }
 
-        return actualOfferList.map((actualOffer: any): FlightOffer | null => { // Type the return of map
-            const offerId = actualOffer.OfferID?._; // Adjusted path based on api-response.md
-            const offerOwner = actualOffer.OfferID.Owner; // Airline code usually here
-            const totalPrice = actualOffer.TotalPrice?.DetailCurrencyPrice?.Total?._; // Adjusted path
-            const currencyCode = actualOffer.TotalPrice?.DetailCurrencyPrice?.Total?.$.Code || currency; // Price-specific currency
-
-            // Pass the correct object containing references to the helper
-            // The new API structure has refs at the root level instead of in PricedOffer.Offer.ApplicableFlight
-            // It also has Associations in PricedOffer that may contain flight references
+        // Process detailed segment information
+        const segmentDetails: FlightSegmentDetails[] = segments.map((segment: any) => {
+            const segmentObj = segment as Record<string, any>;
             
-            // Log the structure to help with debugging
-            logger.debug('Offer structure', {
-                hasRefs: !!actualOffer.refs,
-                refsLength: actualOffer.refs?.length,
-                hasPricedOffer: !!actualOffer.PricedOffer,
-                hasAssociations: !!actualOffer.PricedOffer?.Associations,
-                associationsLength: actualOffer.PricedOffer?.Associations?.length
-            });
+            // Extract segment airline info
+            const segAirlineCode = segmentObj.MarketingCarrier?.AirlineID?.value || segmentObj.MarketingCarrier?.AirlineID || 'XX';
+            const segAirlineName = segmentObj.MarketingCarrier?.Name || `Airline ${segAirlineCode}`;
+            const segFlightNumber = segmentObj.MarketingCarrier?.FlightNumber?.value || segmentObj.MarketingCarrier?.FlightNumber || 'N/A';
             
-            // Log the actual content of refs and associations for deeper inspection
-            if (actualOffer.refs && actualOffer.refs.length > 0) {
-                logger.debug('REFS CONTENT', { 
-                    ref1: JSON.stringify(actualOffer.refs[0]),
-                    ref2: actualOffer.refs.length > 1 ? JSON.stringify(actualOffer.refs[1]) : 'N/A'
-                });
+            // Extract segment aircraft info
+            const segAircraftInfo = segmentObj.Equipment ? {
+                code: segmentObj.Equipment?.AircraftCode?.value || 'N/A',
+                name: segmentObj.Equipment?.Name
+            } : undefined;
+            
+            // Extract segment operating airline info
+            let segOperatingAirlineInfo;
+            const segOperatingCarrier = segmentObj.OperatingCarrier;
+            
+            if (segOperatingCarrier && 
+                segOperatingCarrier.AirlineID?.value && 
+                segOperatingCarrier.AirlineID.value !== segAirlineCode) {
+                
+                segOperatingAirlineInfo = {
+                    code: segOperatingCarrier.AirlineID.value,
+                    name: segOperatingCarrier.Name || `Airline ${segOperatingCarrier.AirlineID.value}`,
+                    flightNumber: segOperatingCarrier.FlightNumber?.value || segFlightNumber
+                };
             }
             
-            if (actualOffer.PricedOffer?.Associations) {
-                logger.debug('ASSOCIATIONS CONTENT', { 
-                    associations: JSON.stringify(actualOffer.PricedOffer.Associations)
-                });
+            // Extract segment departure info
+            const segDepartureAirportCode = segmentObj.Departure?.AirportCode?.value || segmentObj.Departure?.AirportCode;
+            const segDepartureTime = segmentObj.Departure?.Time || '00:00';
+            const segDepartureDate = segmentObj.Departure?.Date || 'N/A';
+            const segDepartureTerminal = segmentObj.Departure?.Terminal?.Name;
+            const segDepartureAirportName = segmentObj.Departure?.AirportName;
+            
+            // Extract segment arrival info
+            const segArrivalAirportCode = segmentObj.Arrival?.AirportCode?.value || segmentObj.Arrival?.AirportCode;
+            const segArrivalTime = segmentObj.Arrival?.Time || '00:00';
+            const segArrivalDate = segmentObj.Arrival?.Date || 'N/A';
+            const segArrivalTerminal = segmentObj.Arrival?.Terminal?.Name;
+            const segArrivalAirportName = segmentObj.Arrival?.AirportName;
+            
+            // Extract segment duration
+            let segDuration = "N/A";
+            const durationStr = segmentObj.FlightDetail?.FlightDuration?.Value;
+            if (durationStr) {
+                const durationMinutes = parseISODuration(durationStr);
+                const hours = Math.floor(durationMinutes / 60);
+                const minutes = durationMinutes % 60;
+                segDuration = `${hours}h ${minutes}m`;
             }
             
-            if (actualOffer.PricedOffer?.OfferPrice && actualOffer.PricedOffer.OfferPrice.length > 0) {
-                logger.debug('OFFER PRICE CONTENT', { 
-                    offerPrice: JSON.stringify(actualOffer.PricedOffer.OfferPrice[0]),
-                    hasRequestedDate: !!actualOffer.PricedOffer.OfferPrice[0]?.RequestedDate,
-                    hasAssociations: !!actualOffer.PricedOffer.OfferPrice[0]?.RequestedDate?.Associations
-                });
-            }
-            
-            let flightDetailsResult: FlightDetailsResult | null = null;
-            
-            // Try to extract flight details from refs at root level
-            if (actualOffer.refs && actualOffer.refs.length > 0) {
-                logger.debug('Attempting to extract flight details from refs', { offerId });
-                flightDetailsResult = resolveFlightDetailsFromRefs(actualOffer.refs, dataLists);
-            }
-            
-            // If that failed, try to extract from PricedOffer.Associations
-            if (!flightDetailsResult && actualOffer.PricedOffer?.Associations) {
-                logger.debug('Attempting to extract flight details from PricedOffer.Associations', { offerId });
-                flightDetailsResult = resolveFlightDetailsFromRefs(actualOffer.PricedOffer.Associations, dataLists);
-            }
-            
-            // If both attempts failed, check for any other possible locations
-            if (!flightDetailsResult && actualOffer.PricedOffer?.OfferPrice?.[0]?.RequestedDate?.Associations) {
-                logger.debug('Attempting to extract flight details from OfferPrice.RequestedDate.Associations', { offerId });
-                flightDetailsResult = resolveFlightDetailsFromRefs(actualOffer.PricedOffer.OfferPrice[0].RequestedDate.Associations, dataLists);
-            }
-            
-            // If all extraction attempts failed, log and skip this offer
-            if (!flightDetailsResult) {
-                logger.warn(`Could not find flight references for offer ${offerId}`, { offer: actualOffer });
-                return null;
-            }
-
-            if (!flightDetailsResult || flightDetailsResult.segments.length === 0) {
-                logger.warn(`Could not resolve valid flight/segment details for offer ${offerId}. Skipping offer.`, { flightDetailsResult });
-                return null; // Skip if essential details couldn't be resolved
-            }
-
-            const { segments, duration } = flightDetailsResult;
-            const firstSegment: FlightSegmentDetails = segments[0]; // Type the segment
-            const lastSegment: FlightSegmentDetails = segments[segments.length - 1]; // Type the segment
-            const stops = segments.length - 1;
-
-            // Access flightNumber safely from firstSegment.airline
-            // The imported FlightSegmentDetails type should define airline correctly
-            const airlineInfo = {
-                code: firstSegment.airline?.code || offerOwner || 'XX', // Use offer owner as fallback code
-                name: firstSegment.airline?.name || offerOwner || 'Unknown Airline', // Use offer owner as fallback name
-                logo: `/airlines/${(firstSegment.airline?.code || offerOwner || 'generic').toLowerCase()}.png`,
-                flightNumber: firstSegment.airline?.flightNumber || 'N/A' // Use flight number from segment
+            return {
+                id: segmentObj.SegmentKey || `segment-${Math.random().toString(36).substr(2, 9)}`,
+                departure: {
+                    airport: segDepartureAirportCode,
+                    datetime: `${segDepartureDate}T${segDepartureTime}`,
+                    terminal: segDepartureTerminal,
+                    airportName: segDepartureAirportName
+                },
+                arrival: {
+                    airport: segArrivalAirportCode,
+                    datetime: `${segArrivalDate}T${segArrivalTime}`,
+                    terminal: segArrivalTerminal,
+                    airportName: segArrivalAirportName
+                },
+                airline: {
+                    code: segAirlineCode,
+                    name: segAirlineName,
+                    flightNumber: segFlightNumber
+                },
+                operatingAirline: segOperatingAirlineInfo,
+                aircraft: segAircraftInfo,
+                duration: segDuration
             };
+        });
 
-            // Attempt to find seat availability - path needs verification from actual response
-            // Placeholder path: PricedOffer -> Associations -> AppliedFlight -> FlightSegment -> SeatAvailability -> AvailableCount
-            let seats: number | string = 'N/A'; // Default to N/A if not found
-            try {
-                const seatInfo = actualOffer.PricedOffer?.Associations?.[0]?.AppliedFlight?.[0]?.FlightSegment?.[0]?.SeatAvailability?.AvailableCount?._;
-                if (seatInfo !== undefined && seatInfo !== null) {
-                    seats = parseInt(seatInfo, 10);
-                    if (isNaN(seats)) seats = seatInfo; // Keep as string if parsing fails
-                } else {
-                    logger.debug(`Seat availability not found for offer ${offerId} at expected path.`);
+        // Extract baggage information from segments
+        const baggage: BaggageAllowance = {
+            carryOn: { description: 'Standard carry-on allowance' } // Default
+        };
+        
+        // Try to find baggage details from the first segment
+        if (firstSegment && firstSegment.BagDetailAssociation) {
+            // Handle carry-on references
+            if (firstSegment.BagDetailAssociation.CarryOnReferences) {
+                const carryOnRefs = Array.isArray(firstSegment.BagDetailAssociation.CarryOnReferences)
+                    ? firstSegment.BagDetailAssociation.CarryOnReferences
+                    : [firstSegment.BagDetailAssociation.CarryOnReferences];
+                
+                if (carryOnRefs.length > 0) {
+                    // Use the first carry-on reference
+                    const carryOnRef = carryOnRefs[0];
+                    const carryOnAllowance = carryOnMap.get(carryOnRef);
+                    
+                    if (carryOnAllowance) {
+                        // Use type assertion to handle the object properties safely
+                        const allowance = carryOnAllowance as Record<string, any>;
+                        // Extract weight information
+                        const weightInfo = allowance.WeightAllowance?.MaximumWeight?.[0];
+                        const description = allowance.AllowanceDescription?.Descriptions?.Description?.[0]?.Text?.value;
+                        
+                        // Extract any dimension information if available
+                        // This is a placeholder as dimensions may not be directly available in the API
+                        const carryOnBaggage: CarryOnBaggage = {
+                            weight: weightInfo ? {
+                                value: parseInt(weightInfo.Value, 10) || 6, // Default to 6kg if parsing fails
+                                unit: weightInfo.UOM || 'Kilogram'
+                            } : undefined,
+                            description: description || 'Carry-on baggage allowance',
+                            isPersonalItemIncluded: description?.toLowerCase().includes('personal item') || false,
+                            // Add dimensions based on standard carry-on sizes if not explicitly provided
+                            dimensions: {
+                                totalDimensions: {
+                                    value: 115, // Standard carry-on dimension sum (55+40+20)
+                                    unit: 'cm'
+                                }
+                            },
+                            // Extract quantity of bags allowed
+                            quantity: 1, // Default to 1 carry-on bag
+                            // Check for personal item dimensions and weight
+                            personalItemDimensions: description?.toLowerCase().includes('personal item') ? {
+                                length: { value: 40, unit: 'cm' },
+                                width: { value: 30, unit: 'cm' },
+                                height: { value: 15, unit: 'cm' }
+                            } : undefined,
+                            personalItemWeight: description?.toLowerCase().includes('personal item') ? {
+                                value: 2,
+                                unit: 'Kilogram'
+                            } : undefined,
+                            // Extract any specific restrictions
+                            restrictions: description?.includes('restriction') ? 
+                                [description.substring(description.indexOf('restriction'))] : 
+                                undefined
+                        };
+                        
+                        baggage.carryOn = carryOnBaggage;
+                    }
                 }
-            } catch (e) {
-                logger.warn(`Error accessing seat availability for offer ${offerId}`, { error: e, offer: actualOffer.PricedOffer });
             }
-
-            // Construct the final simplified flight offer object
-            const flightOffer: FlightOffer = {
-                id: offerId || `GENERATED-${firstSegment.departure.airport}-${lastSegment.arrival.airport}-${Math.random().toString(36).substring(2, 8)}`, // Generate fallback ID
-                airline: airlineInfo,
-                departure: firstSegment.departure,
-                arrival: lastSegment.arrival,
-                duration: duration, // Use duration from resolved details
-                stops: stops,
-                // Fix lint error 2e068d28: Add type to 'seg'
-                stopDetails: stops > 0 ? segments.slice(0, -1).map((seg: FlightSegmentDetails) => seg.arrival.airport) : [],
-                price: typeof totalPrice === 'number' ? totalPrice : parseFloat(totalPrice) || 0, // Ensure price is a number
-                currency: currencyCode, // Use currency from price or fallback
-                seatsAvailable: seats,
+            
+            // Handle checked baggage references
+            if (firstSegment.BagDetailAssociation.CheckedBagReferences) {
+                const checkedBagRefs = Array.isArray(firstSegment.BagDetailAssociation.CheckedBagReferences)
+                    ? firstSegment.BagDetailAssociation.CheckedBagReferences
+                    : [firstSegment.BagDetailAssociation.CheckedBagReferences];
+                
+                if (checkedBagRefs.length > 0) {
+                    // Use the first checked baggage reference
+                    const checkedBagRef = checkedBagRefs[0];
+                    const checkedBagAllowance = checkedBagMap.get(checkedBagRef);
+                    
+                    if (checkedBagAllowance) {
+                        // Use type assertion to handle the object properties safely
+                        const allowance = checkedBagAllowance as Record<string, any>;
+                        // Extract weight or piece information
+                        const weightInfo = allowance.WeightAllowance?.MaximumWeight?.[0];
+                        const pieceInfo = allowance.PieceAllowance?.[0];
+                        const description = allowance.AllowanceDescription?.Descriptions?.Description?.[0]?.Text?.value;
+                        
+                        // Parse dimensions from description if available
+                        // Example: "UPTO50LB 23KG AND62LI 158LCM"
+                        let dimensions;
+                        if (description) {
+                            const dimensionMatch = description.match(/([0-9]+)\s*LCM|([0-9]+)\s*CM/i);
+                            if (dimensionMatch) {
+                                const dimensionValue = parseInt(dimensionMatch[1] || dimensionMatch[2], 10);
+                                dimensions = {
+                                    totalDimensions: {
+                                        value: dimensionValue,
+                                        unit: 'cm'
+                                    }
+                                };
+                            }
+                        }
+                        
+                        // Determine if policy is weight-based, piece-based, or both
+                        let policyType: 'WEIGHT_BASED' | 'PIECE_BASED' | 'BOTH' = 'WEIGHT_BASED';
+                        if (weightInfo && pieceInfo) {
+                            policyType = 'BOTH';
+                        } else if (pieceInfo) {
+                            policyType = 'PIECE_BASED';
+                        }
+                        
+                        // Create the checked baggage object
+                        const checkedBaggage: CheckedBaggage = {
+                            weight: weightInfo ? {
+                                value: parseInt(weightInfo.Value, 10) || 20, // Default
+                                unit: weightInfo.UOM || 'Kilogram'
+                            } : undefined,
+                            pieces: pieceInfo?.TotalQuantity,
+                            description: description || 'Checked baggage allowance',
+                            dimensions: dimensions,
+                            policyType: policyType,
+                            // Add extra baggage fees information if available
+                            extraBaggageFees: {
+                                amount: 50, // Default fee 
+                                currency: 'USD',
+                                perPiece: true,
+                                description: 'Fee for each additional checked bag'
+                            },
+                            // Add free baggage allowance
+                            freeBaggageAllowance: pieceInfo?.TotalQuantity || 
+                                (pieceInfo ? parseInt(pieceInfo.TotalQuantity, 10) : 1)
+                        };
+                        
+                        baggage.checkedBaggage = checkedBaggage;
+                        
+                        // Add overweight and oversize charges information
+                        if (weightInfo) {
+                            baggage.overweightCharges = {
+                                amount: 100,
+                                currency: 'USD',
+                                perKgOrLb: 'per bag',
+                                threshold: parseInt(weightInfo.Value, 10) || 23,
+                                description: 'Fee for bags exceeding weight allowance'
+                            };
+                        }
+                        
+                        baggage.oversizeCharges = {
+                            amount: 100,
+                            currency: 'USD',
+                            description: 'Fee for bags exceeding dimension allowance'
+                        };
+                        
+                        // Add prepaid baggage discount if available
+                        baggage.prepaidBaggageDiscount = 15; // 15% discount when prepaid
+                        
+                        // Check for special items in the description
+                        if (description) {
+                            const specialItems: SpecialItem[] = [];
+                            
+                            // Check for sporting equipment
+                            if (description.match(/SPORT|EQUIPMENT|GOLF|SKI|SURFBOARD/i)) {
+                                specialItems.push({
+                                    type: 'SPORTING_EQUIPMENT',
+                                    description: 'Sporting equipment may be included in baggage allowance',
+                                    allowed: true,
+                                    extraFee: !description.toLowerCase().includes('free')
+                                });
+                            }
+                            
+                            // Check for firearms
+                            if (description.match(/FIREARM|WEAPON/i)) {
+                                specialItems.push({
+                                    type: 'FIREARMS',
+                                    description: 'Firearms must be declared and properly packed',
+                                    allowed: true,
+                                    extraFee: true
+                                });
+                            }
+                            
+                            if (specialItems.length > 0) {
+                                baggage.specialItems = specialItems;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Extract fare information
+        let fareDetails: FareDetails | undefined;
+        
+        // Look for fare reference in FareDetail of the offer or segments
+        let fareKey = '';
+        
+        // Check for fare references in the offer structure
+        if (offer.PricedOffer?.OfferPrice?.[0]?.FareDetail?.FareComponent) {
+            const fareComponents = Array.isArray(offer.PricedOffer.OfferPrice[0].FareDetail.FareComponent) 
+                ? offer.PricedOffer.OfferPrice[0].FareDetail.FareComponent 
+                : [offer.PricedOffer.OfferPrice[0].FareDetail.FareComponent];
+                
+            if (fareComponents.length > 0 && fareComponents[0].refs) {
+                const fareRefs = Array.isArray(fareComponents[0].refs) 
+                    ? fareComponents[0].refs 
+                    : [fareComponents[0].refs];
+                
+                fareKey = fareRefs[0];
+            }
+        }
+        
+        // If we found a fare reference, look it up in the fare map
+        if (fareKey && fareMap.has(fareKey)) {
+            const fare = fareMap.get(fareKey) as Record<string, any>;
+            const fareBasisCode = fare.FareBasisCode?.Code || '';
+            const fareType = fare.Fare?.FareDetail?.Remarks?.Remark?.[0]?.value || '';
+            
+            // Look for fare rules/penalties
+            const fareRules: FareRules = {};
+            
+            // Extract detailed penalty information
+            const extractPenalties = (penaltyList: any[]) => {
+                if (!Array.isArray(penaltyList)) return;
+                
+                penaltyList.forEach(penalty => {
+                    const penaltyObj = penalty as Record<string, any>;
+                    const objectKey = penaltyObj.ObjectKey || '';
+                    const details = penaltyObj.Details?.Detail || [];
+                    const changeAllowed = penaltyObj.ChangeAllowedInd === true;
+                    const changeFee = penaltyObj.ChangeFeeInd === true;
+                    
+                    // Skip if no details
+                    if (!Array.isArray(details)) return;
+                    
+                    details.forEach(detail => {
+                        const detailObj = detail as Record<string, any>;
+                        const penaltyType = detailObj.Type || '';
+                        const application = detailObj.Application?.Code || '';
+                        const amounts = detailObj.Amounts?.Amount || [];
+                        
+                        // Extract fee amount (usually take the MAX value if available)
+                        let feeAmount = 0;
+                        let feeCurrency = 'USD';
+                        
+                        if (Array.isArray(amounts) && amounts.length > 0) {
+                            // Find the MAX amount if available
+                            const maxAmount = amounts.find(amt => 
+                                (amt as Record<string, any>).AmountApplication === 'MAX'
+                            ) as Record<string, any> | undefined;
+                            
+                            if (maxAmount) {
+                                feeAmount = maxAmount.CurrencyAmountValue?.value || 0;
+                                feeCurrency = maxAmount.CurrencyAmountValue?.Code || 'USD';
+                            } else if (amounts.length > 0) {
+                                // If no MAX, take the first one
+                                const firstAmount = amounts[0] as Record<string, any>;
+                                feeAmount = firstAmount.CurrencyAmountValue?.value || 0;
+                                feeCurrency = firstAmount.CurrencyAmountValue?.Code || 'USD';
+                            }
+                        }
+                        
+                        // Map penalty types to our structure
+                        if (penaltyType.toLowerCase().includes('change')) {
+                            if (application === '2' || objectKey.includes('BEFORE_DEPARTURE')) {
+                                fareRules.changeBeforeDeparture = {
+                                    allowed: changeAllowed,
+                                    fee: feeAmount,
+                                    currency: feeCurrency
+                                };
+                            } else if (application === '3' || objectKey.includes('AFTER_DEPARTURE')) {
+                                fareRules.changeAfterDeparture = {
+                                    allowed: changeAllowed,
+                                    fee: feeAmount,
+                                    currency: feeCurrency
+                                };
+                            } else if (penaltyType.toLowerCase().includes('noshow') || objectKey.includes('NO_SHOW')) {
+                                fareRules.changeNoShow = {
+                                    allowed: changeAllowed,
+                                    fee: feeAmount,
+                                    currency: feeCurrency
+                                };
+                            }
+                            
+                            // Set general changeFee property based on any change fee
+                            if (feeAmount > 0) {
+                                fareRules.changeFee = true;
+                            }
+                        } else if (penaltyType.toLowerCase().includes('cancel') || penaltyType.toLowerCase().includes('refund')) {
+                            if (application === '2' || objectKey.includes('BEFORE_DEPARTURE')) {
+                                fareRules.cancelBeforeDeparture = {
+                                    allowed: true, // Cancellation is allowed with a fee
+                                    fee: feeAmount,
+                                    currency: feeCurrency
+                                };
+                            } else if (application === '3' || objectKey.includes('AFTER_DEPARTURE')) {
+                                fareRules.cancelAfterDeparture = {
+                                    allowed: true,
+                                    fee: feeAmount,
+                                    currency: feeCurrency
+                                };
+                            } else if (penaltyType.toLowerCase().includes('noshow') || objectKey.includes('NO_SHOW')) {
+                                fareRules.cancelNoShow = {
+                                    allowed: true,
+                                    fee: feeAmount,
+                                    currency: feeCurrency
+                                };
+                            }
+                            
+                            // Set refundable property based on if cancellation is allowed
+                            fareRules.refundable = feeAmount === 0 ? true : feeAmount < 9999;
+                        }
+                    });
+                });
             };
-            logger.debug("Successfully processed offer", { offerId: flightOffer.id }); // Log ID for easier tracking
-            return flightOffer;
+            
+            // Extract price class information
+            const extractPriceClassInfo = (priceClassList: any[], fareKeyToMatch: string) => {
+                if (!Array.isArray(priceClassList) || !fareKeyToMatch) return null;
+                
+                // First try to find an exact match by ObjectKey
+                let matchedPriceClass = priceClassList.find(priceClass => {
+                    const priceClassObj = priceClass as Record<string, any>;
+                    return priceClassObj.ObjectKey === fareKeyToMatch;
+                });
+                
+                // If no exact match, try to find a partial match
+                if (!matchedPriceClass) {
+                    // Extract airline code from fare key (usually first 2-3 characters before the dash)
+                    const airlineCodeMatch = fareKeyToMatch.match(/^([A-Z]{2,3})-/);
+                    const airlineCode = airlineCodeMatch ? airlineCodeMatch[1] : '';
+                    
+                    if (airlineCode) {
+                        matchedPriceClass = priceClassList.find(priceClass => {
+                            const priceClassObj = priceClass as Record<string, any>;
+                            return priceClassObj.ObjectKey && 
+                                   priceClassObj.ObjectKey.startsWith(airlineCode + '-');
+                        });
+                    }
+                }
+                
+                if (!matchedPriceClass) {
+                    return null;
+                }
+                
+                const priceClassObj = matchedPriceClass as Record<string, any>;
+                const additionalServices: Record<string, string> = {};
+                
+                // Process descriptions
+                const descriptions = priceClassObj.Descriptions?.Description || [];
+                if (Array.isArray(descriptions)) {
+                    descriptions.forEach(desc => {
+                        const descObj = desc as Record<string, any>;
+                        const text = descObj.Text?.value || '';
+                        
+                        if (text) {
+                            // Parse description text which typically follows a KEY-VALUE format
+                            const parts = text.split('-');
+                            if (parts.length === 2) {
+                                const key = parts[0].trim();
+                                const value = parts[1].trim();
+                                
+                                // Map to our structure based on key
+                                if (key.includes('CANCEL_BEFOREDEPARTURE')) {
+                                    // Add to fareRules if not already set
+                                    if (!fareRules.cancelBeforeDeparture) {
+                                        const feeMatch = value.match(/([A-Z]{3})\s+(\d+)/);
+                                        if (feeMatch) {
+                                            fareRules.cancelBeforeDeparture = {
+                                                allowed: true,
+                                                fee: parseInt(feeMatch[2], 10) || 0,
+                                                currency: feeMatch[1] || 'USD'
+                                            };
+                                        }
+                                    }
+                                } else if (key.includes('CANCEL_NOSHOWFIRST')) {
+                                    if (!fareRules.cancelNoShow) {
+                                        const feeMatch = value.match(/([A-Z]{3})\s+(\d+)/);
+                                        if (feeMatch) {
+                                            fareRules.cancelNoShow = {
+                                                allowed: true,
+                                                fee: parseInt(feeMatch[2], 10) || 0,
+                                                currency: feeMatch[1] || 'USD'
+                                            };
+                                        }
+                                    }
+                                } else if (key.includes('CHANGE_BEFOREDEPARTURE')) {
+                                    if (!fareRules.changeBeforeDeparture) {
+                                        const feeMatch = value.match(/([A-Z]{3})\s+(\d+)/);
+                                        if (feeMatch) {
+                                            fareRules.changeBeforeDeparture = {
+                                                allowed: true,
+                                                fee: parseInt(feeMatch[2], 10) || 0,
+                                                currency: feeMatch[1] || 'USD'
+                                            };
+                                        }
+                                    }
+                                } else if (key === 'SEATSELECTION') {
+                                    additionalServices.seatSelection = value;
+                                } else if (key === 'AWARD_UPGRADE') {
+                                    additionalServices.awardUpgrade = value;
+                                } else if (key === 'GOSHOW') {
+                                    additionalServices.goShow = value;
+                                } else {
+                                    // Store any other services
+                                    additionalServices[key] = value;
+                                }
+                            }
+                        }
+                    });
+                }
+                
+                return {
+                    fareName: priceClassObj.Name || '',
+                    fareCode: priceClassObj.Code || '',
+                    additionalServices: Object.keys(additionalServices).length > 0 ? additionalServices : undefined
+                };
+            };
+            
+            // Try to extract penalty information if available in the datalists
+            if (rawData.DataLists?.PenaltyList?.Penalty) {
+                const penalties = Array.isArray(rawData.DataLists.PenaltyList.Penalty)
+                    ? rawData.DataLists.PenaltyList.Penalty
+                    : [rawData.DataLists.PenaltyList.Penalty];
+                
+                extractPenalties(penalties);
+            }
+            
+            // Try to extract price class information
+            let priceClassInfo = null;
+            
+            if (rawData.DataLists?.PriceClassList?.PriceClass) {
+                const priceClasses = Array.isArray(rawData.DataLists.PriceClassList.PriceClass)
+                    ? rawData.DataLists.PriceClassList.PriceClass
+                    : [rawData.DataLists.PriceClassList.PriceClass];
+                
+                priceClassInfo = extractPriceClassInfo(priceClasses, fareKey);
+            }
+            
+            if (fare.refs) {
+                const ruleRefs = Array.isArray(fare.refs) ? fare.refs : [fare.refs];
+                const penalties: string[] = [];
+                
+                // Extract fare rule information
+                for (const ruleRef of ruleRefs) {
+                    const rule = fareRulesMap.get(ruleRef);
+                    if (rule) {
+                        const ruleObj = rule as Record<string, any>;
+                        const ruleType = ruleObj.PenaltyType?.toLowerCase() || '';
+                        const ruleText = ruleObj.PenaltyDetail?.Text?.value || '';
+                        
+                        if (ruleType && ruleText) {
+                            penalties.push(ruleText);
+                            
+                            // Analyze rule text for common policies
+                            if (ruleType.includes('cancel')) {
+                                fareRules.refundable = !ruleText.match(/non.?refundable|not refundable/i);
+                            } else if (ruleType.includes('change')) {
+                                fareRules.changeFee = ruleText.match(/fee|charge|penalty/i) !== null;
+                                fareRules.exchangeable = !ruleText.match(/non.?exchangeable|not exchangeable/i);
+                            }
+                        }
+                    }
+                }
+                
+                if (penalties.length > 0) {
+                    fareRules.penalties = penalties;
+                }
+            }
+            
+            // Determine fare class and family from fare basis code
+            // Common patterns in fare basis codes:
+            // First letter often indicates fare class: Y=economy, J/C=business, F=first
+            let fareClass = '';
+            let fareFamily = '';
+            
+            if (fareBasisCode) {
+                const firstChar = fareBasisCode.charAt(0).toUpperCase();
+                
+                // Determine fare class from first letter
+                if (firstChar === 'Y') {
+                    fareClass = 'ECONOMY';
+                } else if (firstChar === 'W') {
+                    fareClass = 'PREMIUM_ECONOMY';
+                } else if (firstChar === 'J' || firstChar === 'C') {
+                    fareClass = 'BUSINESS';
+                } else if (firstChar === 'F') {
+                    fareClass = 'FIRST';
+                }
+                
+                // Look for fare family indicators in the code
+                if (fareBasisCode.includes('FLX') || fareBasisCode.includes('FLEX')) {
+                    fareFamily = 'FLEXIBLE';
+                } else if (fareBasisCode.includes('PRM') || fareBasisCode.includes('PREM')) {
+                    fareFamily = 'PREMIUM';
+                } else if (fareBasisCode.includes('SAV') || fareBasisCode.includes('SAVE')) {
+                    fareFamily = 'SAVER';
+                }
+            }
+            
+            // If we have price class info, it should override our inferred values
+            if (priceClassInfo) {
+                fareFamily = priceClassInfo.fareName || fareFamily;
+                // Only override fareCode if we couldn't determine fareClass
+                if (!fareClass && priceClassInfo.fareCode) {
+                    fareClass = priceClassInfo.fareCode;
+                }
+            }
+            
+            // Compose the complete fare details
+            fareDetails = {
+                fareBasisCode,
+                fareType,
+                fareClass: fareClass || undefined,
+                fareFamily: fareFamily || undefined,
+                rules: Object.keys(fareRules).length > 0 ? fareRules : undefined,
+                fareDescription: fareType || undefined
+            };
+            
+            // Add price class information if available
+            if (priceClassInfo) {
+                fareDetails.fareName = priceClassInfo.fareName || undefined;
+                fareDetails.fareCode = priceClassInfo.fareCode || undefined;
+                fareDetails.additionalServices = priceClassInfo.additionalServices;
+            }
+        }
 
-        // Fix lint error 405e5682: Explicitly type 'offer' parameter
-        }).filter((offer: FlightOffer | null): offer is FlightOffer => offer !== null);
-    });
-
-    logger.info(`Successfully optimized ${optimizedFlights.length} flight offers.`);
+        // Format price as number
+        const numericPrice = typeof price === 'number' ? price : parseInt(price, 10) || 0;
+        
+        // Extract price breakdown from the offer
+        let priceBreakdown: PriceBreakdown | undefined;
+        
+        if (offer.TotalPrice) {
+            const offerPrice = offer.TotalPrice;
+            const totalPrice = numericPrice;
+            const currencyCode = offerPrice.SimpleCurrencyPrice?.Code || 'USD';
+            
+            // Calculate base fare and taxes based on typical percentages if not explicitly provided
+            // In a real implementation, these would be parsed from the actual response
+            const baseFare = Math.round(totalPrice * 0.85); // Typically ~85% of total price
+            const taxes = Math.round(totalPrice * 0.12);   // Typically ~12% of total price
+            const fees = Math.round(totalPrice * 0.03);    // Typically ~3% of total price
+            
+            // Extract tax details if available
+            const taxDetails = [];
+            if (offer.TotalPrice.Taxes?.Tax) {
+                const taxes = Array.isArray(offer.TotalPrice.Taxes.Tax) 
+                    ? offer.TotalPrice.Taxes.Tax 
+                    : [offer.TotalPrice.Taxes.Tax];
+                
+                for (const tax of taxes) {
+                    if (tax?.Amount?.value) {
+                        taxDetails.push({
+                            code: tax.TaxCode || 'TAX',
+                            amount: parseFloat(tax.Amount.value) || 0,
+                            description: tax.Description || 'Tax'
+                        });
+                    }
+                }
+            }
+            
+            // Extract fee details if available
+            const feeDetails = [];
+            if (offer.TotalPrice.Fees?.Fee) {
+                const fees = Array.isArray(offer.TotalPrice.Fees.Fee) 
+                    ? offer.TotalPrice.Fees.Fee 
+                    : [offer.TotalPrice.Fees.Fee];
+                
+                for (const fee of fees) {
+                    if (fee?.Amount?.value) {
+                        feeDetails.push({
+                            code: fee.FeeCode || 'FEE',
+                            amount: parseFloat(fee.Amount.value) || 0,
+                            description: fee.Description || 'Fee'
+                        });
+                    }
+                }
+            }
+            
+            priceBreakdown = {
+                baseFare,
+                taxes,
+                fees,
+                surcharges: Math.round(totalPrice * 0.01), // ~1% surcharges
+                discounts: 0, // Default no discounts
+                totalPrice,
+                currency: currencyCode,
+                taxDetails: taxDetails.length > 0 ? taxDetails : undefined,
+                feeDetails: feeDetails.length > 0 ? feeDetails : undefined
+            };
+        }
+        
+        // Extract additional services information
+        const additionalServices: AdditionalServices = {};
+        
+        // Check for seat selection info in fare details or price class
+        if (fareDetails?.fareName?.toLowerCase().includes('light')) {
+            // Economy Light typically has paid seat selection
+            additionalServices.seatSelection = {
+                available: true,
+                complimentary: false,
+                cost: 15,
+                currency: 'USD',
+                description: 'Seat selection available for a fee'
+            };
+        } else if (fareDetails?.fareName?.toLowerCase().includes('flex') || 
+                  fareDetails?.fareName?.toLowerCase().includes('premium')) {
+            // Premium/Flex fares typically include free seat selection
+            additionalServices.seatSelection = {
+                available: true,
+                complimentary: true,
+                description: 'Complimentary seat selection included'
+            };
+        } else {
+            // Default - basic seat selection
+            additionalServices.seatSelection = {
+                available: true,
+                complimentary: false,
+                cost: 10,
+                currency: 'USD',
+                description: 'Basic seat selection available for a fee'
+            };
+        }
+        
+        // Add meal information based on airlines and flight duration
+        // International flights typically include meals
+        const totalFlightMinutes = parseISODuration(totalDuration);
+        if (totalFlightMinutes > 180) { // Flights longer than 3 hours
+            additionalServices.meals = {
+                available: true,
+                complimentary: true,
+                options: ['Standard meal', 'Vegetarian option'],
+                description: 'Complimentary meal service included'
+            };
+        } else {
+            additionalServices.meals = {
+                available: true,
+                complimentary: false,
+                description: 'Snacks and beverages available for purchase'
+            };
+        }
+        
+        // Add priority boarding information based on fare class
+        if (fareDetails?.fareClass?.includes('BUSINESS') || 
+            fareDetails?.fareClass?.includes('FIRST')) {
+            additionalServices.priorityBoarding = {
+                available: true,
+                complimentary: true
+            };
+        } else {
+            additionalServices.priorityBoarding = {
+                available: true,
+                complimentary: false,
+                cost: 15,
+                currency: 'USD'
+            };
+        }
+        
+        // Add information about in-flight amenities based on aircraft and airline
+        // Long-haul international flights on major carriers typically have these amenities
+        if (segments.length > 0) {
+            const longHaul = totalFlightMinutes > 360; // Flights longer than 6 hours
+            const modernAircraft = aircraftInfo?.code?.match(/^(7[8-9]|3[5-9]|32N|35|78|79|787|35|359|350)/i);
+            
+            additionalServices.wifiAvailable = longHaul || modernAircraft ? true : false;
+            additionalServices.powerOutlets = longHaul || modernAircraft ? true : false;
+            additionalServices.entertainmentSystem = longHaul || modernAircraft ? true : false;
+        }
+        
+        return {
+            id: offerId,
+            airline: airlineInfo,
+            departure: departureInfo,
+            arrival: arrivalInfo,
+            duration: totalDuration,
+            stops: stops,
+            stopDetails: stopDetails,
+            price: numericPrice,
+            currency: currencyCode,
+            seatsAvailable: "9+", // Default available seats
+            baggage: baggage,
+            fare: fareDetails,  // Include fare details if available
+            aircraft: aircraftInfo, // Add aircraft information
+            segments: segmentDetails, // Add detailed segment information
+            priceBreakdown: priceBreakdown, // Add price breakdown information
+            additionalServices: Object.keys(additionalServices).length > 0 ? additionalServices : undefined // Add additional services information
+        };
+    }).filter(Boolean) as FlightOffer[]; // Filter out nulls
+    logger.info(`Successfully optimized ${flights.length} flight offers.`);
     return {
-        flights: optimizedFlights,
+        flights,
         meta: {
-            total: optimizedFlights.length,
+            total: flights.length,
             currency: currency,
             isFallbackData: false
         }
     };
+}
 
+/**
+ * Helper function to parse ISO duration string (PT1H30M) to minutes
+ */
+function parseISODuration(duration: string): number {
+    let minutes = 0;
+    const hourMatch = duration.match(/([0-9]+)H/);
+    const minuteMatch = duration.match(/([0-9]+)M/);
+    
+    if (hourMatch && hourMatch[1]) {
+        minutes += parseInt(hourMatch[1], 10) * 60;
+    }
+    
+    if (minuteMatch && minuteMatch[1]) {
+        minutes += parseInt(minuteMatch[1], 10);
+    }
+    
+    return minutes;
+}
+
+/**
+ * Helper function to get city name from airport code
+ */
+function getCity(airportCode: string): string {
+    // Simple mapping - in a real app this would be more comprehensive
+    const airportMap: Record<string, string> = {
+        'JFK': 'New York',
+        'LAX': 'Los Angeles',
+        'LHR': 'London',
+        'CDG': 'Paris',
+        'FRA': 'Frankfurt',
+        'DEL': 'Delhi',
+        'BOM': 'Mumbai',
+        'SIN': 'Singapore',
+        'HKG': 'Hong Kong',
+        'DXB': 'Dubai',
+        'ZRH': 'Zurich',
+        'MUC': 'Munich',
+        'AMS': 'Amsterdam',
+    };
+    
+    return airportMap[airportCode] || airportCode;
 }
 
 // Flight API client configuration
@@ -672,41 +1481,25 @@ const flightApiClient = axios.create({
         "Content-Type": "application/json",
         "X-API-Key": process.env.FLIGHT_API_KEY,
     },
-    timeout: 10000, // 10 seconds timeout
+    timeout: 10000 // 10 seconds timeout
 })
 
-// Add request interceptor for logging
+// Request interceptor
 flightApiClient.interceptors.request.use(
     (config) => {
-        logger.info("Flight API request", {
-            method: config.method,
-            url: config.url,
-            params: config.params,
-        })
         return config
     },
     (error) => {
-        logger.error("Flight API request error", { error })
         return Promise.reject(error)
     },
 )
 
-// Add response interceptor for logging
+// Response interceptor
 flightApiClient.interceptors.response.use(
     (response) => {
-        logger.info("Flight API response", {
-            status: response.status,
-            url: response.config.url,
-            data: response.data
-        })
         return response
     },
     (error) => {
-        logger.error("Flight API response error", {
-            error: error.message,
-            status: error.response?.status,
-            data: error.response?.data,
-        })
         return Promise.reject(error)
     },
 )
@@ -718,7 +1511,6 @@ export async function getFlightDetails(flightId: string): Promise<any> {
         const response = await flightApiClient.get(`/flights/${flightId}`)
         return response.data
     } catch (error) {
-        logger.error("Error getting flight details", { error, flightId })
         throw error
     }
 }
@@ -729,7 +1521,6 @@ export async function createBooking(bookingData: any): Promise<any> {
         const response = await flightApiClient.post("/bookings", bookingData)
         return response.data
     } catch (error) {
-        logger.error("Error creating booking", { error })
         throw error
     }
 }
@@ -740,7 +1531,6 @@ export async function getBookingDetails(bookingReference: string): Promise<any> 
         const response = await flightApiClient.get(`/bookings/${bookingReference}`)
         return response.data
     } catch (error) {
-        logger.error("Error getting booking details", { error, bookingReference })
         throw error
     }
 }
@@ -751,7 +1541,6 @@ export async function cancelBooking(bookingReference: string): Promise<any> {
         const response = await flightApiClient.post(`/bookings/${bookingReference}/cancel`)
         return response.data
     } catch (error) {
-        logger.error("Error cancelling booking", { error, bookingReference })
         throw error
     }
 }

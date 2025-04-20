@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { MainNav } from "@/components/main-nav"
 import { UserNav } from "@/components/user-nav"
 import { FlightFilters } from "@/components/flight-filters"
+import { EnhancedFlightCard } from "@/components/enhanced-flight-card"
 import { FlightCard } from "@/components/flight-card"
 import { FlightSortOptions } from "@/components/flight-sort-options"
 import { FlightSearchSummary } from "@/components/flight-search-summary"
@@ -206,9 +207,8 @@ export default function FlightsPage() {
     setCurrentPage(1);
     setLoading(true);
     
-    // Check if we have flight data in sessionStorage
-    const storedFlights = sessionStorage.getItem('flightSearchResults')
-    console.log('Stored flights found:', !!storedFlights);
+    // Clear old data
+    setAllFlights([]);
     
     // Get actual search parameters
     const origin = searchParams.get('origin') || 'LHR';
@@ -218,39 +218,108 @@ export default function FlightsPage() {
     const passengers = Number(searchParams.get('passengers')) || 1;
     const cabinClass = searchParams.get('cabinClass') || 'Y';
 
+    // Create a unique search key
+    const searchKey = `flightResults_${origin}_${destination}_${departDate}_${passengers}_${cabinClass}`;
+
     // Log search parameters
     console.log('Search params:', { origin, destination, departDate, returnDate, passengers, cabinClass });
     
-    if (storedFlights) {
-      try {
-        const parsedFlights = JSON.parse(storedFlights)
-        setAllFlights(parsedFlights)
-        setLoading(false)
-      } catch (error) {
-        console.error('Error parsing stored flight data:', error)
-        fetchFlightData();
-      }
-    } else {
-      // Define function to fetch flight data from API
-      fetchFlightData();
-    }
+    // Clear session storage to force API fetch
+    sessionStorage.removeItem(searchKey);
+    console.log('Cleared stored flights for debugging');
     
     // Helper function to fetch flight data from API
+    fetchFlightData();
+    
     async function fetchFlightData() {
       try {
+        // Build request payload using the same structure as the flight-search-form
+        const departDateStr = departDate ? new Date(departDate).toISOString().split('T')[0] : '';
+        const returnDateStr = returnDate ? new Date(returnDate).toISOString().split('T')[0] : '';
+        
+        // Build the properly structured payload that matches what the search form sends
+        const payload = {
+          Preference: {
+            CabinPreferences: {
+              CabinType: [
+                {
+                  PrefLevel: { PrefLevelCode: "Preferred" },
+                  OriginDestinationReferences: ["OD1"],
+                  Code: cabinClass || "Y", // Default to Economy if not specified
+                },
+              ],
+            },
+            FarePreferences: {
+              Types: {
+                Type: [{ Code: "PUBL" }],
+              },
+            },
+            PricingMethodPreference: {
+              BestPricingOption: "Y",
+            },
+          },
+          ResponseParameters: {
+            ResultsLimit: { value: 10 },
+            SortOrder: [
+              { Order: "ASCENDING", Parameter: "PRICE" },
+              { Order: "ASCENDING", Parameter: "STOP" },
+              { Order: "ASCENDING", Parameter: "DEPARTURE_TIME" },
+            ],
+            ShopResultPreference: "FULL",
+          },
+          Travelers: {
+            Traveler: [
+              {
+                AnonymousTraveler: Array.from({ length: Number(passengers) || 1 }, () => ({
+                  PTC: { value: "ADT" },
+                  Age: {
+                    Value: { value: 30 },
+                    BirthDate: { value: "1995-01-01" },
+                  },
+                })),
+              },
+            ],
+          },
+          CoreQuery: {
+            OriginDestinations: {
+              OriginDestination: [
+                {
+                  Departure: {
+                    AirportCode: { value: origin },
+                    Date: departDateStr,
+                  },
+                  Arrival: {
+                    AirportCode: { value: destination },
+                  },
+                  OriginDestinationKey: "OD1",
+                },
+                // If return date is selected, add a return flight
+                ...(returnDateStr ? [
+                  {
+                    Departure: {
+                      AirportCode: { value: destination },
+                      Date: returnDateStr,
+                    },
+                    Arrival: {
+                      AirportCode: { value: origin },
+                    },
+                    OriginDestinationKey: "OD2",
+                  }
+                ] : []),
+              ],
+            },
+          },
+        };
+        
+        console.log('Fetching flights from API with properly structured payload');
+        
         const response = await fetch('/api/flights/search-advanced', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({
-            origin,
-            destination,
-            departDate,
-            returnDate,
-            passengers,
-            cabinClass
-          })
+          body: JSON.stringify(payload),
+          cache: 'no-store'
         });
         
         if (!response.ok) {
@@ -258,192 +327,260 @@ export default function FlightsPage() {
         }
         
         const data = await response.json();
-        console.log('API response:', data);
+        console.log('API response received');
         
-        if (data.flights && data.flights.length > 0) {
-          setAllFlights(data.flights);
-          // Store minimal data in session storage to prevent memory issues
-          try {
-            const minimalData = data.flights.map((flight: any) => ({
-              id: flight.id,
-              price: flight.price,
-              airline: { name: flight.airline.name, code: flight.airline.code },
-              departure: { airport: flight.departure.airport },
-              arrival: { airport: flight.arrival.airport },
-              stops: flight.stops
-            }));
-            sessionStorage.setItem('flightSearchResults', JSON.stringify(minimalData));
-          } catch (error) {
-            console.error('Error storing flight data:', error);
-          }
-        } else {
-          console.log('No flights found in API response, using sample data');
-          // Use sample data
-          const sampleFlightData: ApiFlightResponse[] = [
-        {
-          "id": "XA3D7518-301B-4BE0-B3A-1",
-          "airline": {
-            "name": "Air Canada",
-            "logo": "/airlines/ac.png",
-            "code": "AC",
-            "flightNumber": "8899"
-          },
-          "departure": {
-            "airport": "JFK",
-            "city": "New York",
-            "time": "09:00",
-            "date": "2025-04-20T00:00:00.000"
-          },
-          "arrival": {
-            "airport": "CDG",
-            "city": "Paris",
-            "time": "06:50",
-            "date": "2025-04-21T00:00:00.000"
-          },
-          "duration": "8h 34m",
-          "stops": 1,
-          "stopDetails": [
-            "YUL",
-            "YUL"
-          ],
-          "price": 49147,
-          "seatsAvailable": 0
-        },
-        {
-          "id": "XA3D7518-301B-4BE0-B3A-3",
-          "airline": {
-            "name": "Air Canada",
-            "logo": "/airlines/ac.png",
-            "code": "AC",
-            "flightNumber": "8553"
-          },
-          "departure": {
-            "airport": "JFK",
-            "city": "New York",
-            "time": "10:30",
-            "date": "2025-04-20T00:00:00.000"
-          },
-          "arrival": {
-            "airport": "CDG",
-            "city": "Paris",
-            "time": "10:10",
-            "date": "2025-04-21T00:00:00.000"
-          },
-          "duration": "9h 15m",
-          "stops": 1,
-          "stopDetails": [
-            "YYZ",
-            "YYZ"
-          ],
-          "price": 49709,
-          "seatsAvailable": 0
-        },
-        {
-          "id": "XA3D7518-301B-4BE0-B3A-5",
-          "airline": {
-            "name": "Air Canada",
-            "logo": "/airlines/ac.png",
-            "code": "AC",
-            "flightNumber": "8555"
-          },
-          "departure": {
-            "airport": "JFK",
-            "city": "New York",
-            "time": "15:40",
-            "date": "2025-04-20T00:00:00.000"
-          },
-          "arrival": {
-            "airport": "CDG",
-            "city": "Paris",
-            "time": "10:10",
-            "date": "2025-04-21T00:00:00.000"
-          },
-          "duration": "9h 15m",
-          "stops": 1,
-          "stopDetails": [
-            "YYZ",
-            "YYZ"
-          ],
-          "price": 49709,
-          "seatsAvailable": 0
+        // Log the full structure to debug
+        console.log('Full API response structure:', JSON.stringify(data, null, 2));
+        
+        // If we have flights in the processed data, use them
+        if (data.processed?.flights && Array.isArray(data.processed.flights) && data.processed.flights.length > 0) {
+          console.log(`Found ${data.processed.flights.length} flights in processed data`);
+          
+          // The processed.flights array is already in the correct format for our UI
+          const convertedFlights = convertApiResponseToFlights(data.processed.flights, origin, destination);
+          console.log('Converted flights:', convertedFlights.length);
+          setAllFlights(convertedFlights);
+        } 
+        else {
+          console.log('No flights found in API response');
+          setAllFlights([]);
         }
-      ]
-      
-      // Transform API response to the format expected by the UI
-      const formattedFlights: Flight[] = sampleFlightData.map(flight => {
-        const transformedFlight: Flight = {
-          ...flight,
-          stopDetails: flight.stopDetails ? flight.stopDetails.map(airport => ({
-            airport,
-            city: airport, // Using airport code as city since we don't have city info
-            duration: 'N/A' // We don't have duration info
-          })) : undefined
-        };
-        return transformedFlight;
-      });
-      
-      // Set both allFlights and flights to ensure data is available
-      setAllFlights(formattedFlights)
-      setFlights(formattedFlights.slice(0, itemsPerPage)) // Set the first page of flights directly
-          console.log('Sample flight data loaded:', formattedFlights.length, 'flights');
-          setAllFlights(formattedFlights);
-        }
+        setLoading(false);
       } catch (error) {
         console.error('Error fetching flight data:', error);
-        // Fallback to sample data if API fails
-        loadSampleData();
+        setAllFlights([]);
+        setLoading(false);
       }
     }
-    
-    // Helper function to load sample data
-    function loadSampleData() {
-      const sampleFlightData: ApiFlightResponse[] = [
-        {
-          "id": "SAMPLE-001",
-          "airline": {
-            "name": "Rea Airlines",
-            "logo": "/logo1.png",
-            "code": "RA",
-            "flightNumber": "101"
-          },
-          "departure": {
-            "airport": "LHR",
-            "city": "London",
-            "time": "10:00",
-            "date": "2025-04-23T00:00:00.000"
-          },
-          "arrival": {
-            "airport": "BOM",
-            "city": "Mumbai",
-            "time": "23:00",
-            "date": "2025-04-23T00:00:00.000"
-          },
-          "duration": "13h 00m",
-          "stops": 0,
-          "stopDetails": [],
-          "price": 50000,
-          "seatsAvailable": 10
+  }, [searchParams]);
+
+  // Convert API response to Flight interface
+  function convertApiResponseToFlights(apiFlights: any[], origin: string, destination: string): Flight[] {
+    return apiFlights.map(flight => {
+      // Fix the time extraction logic to handle the unusual datetime format
+      const extractTime = (dateStr: string) => {
+        if (!dateStr) return '00:00';
+        
+        // Handle the specific format "2025-04-23T00:00:00.000T13:30"
+        if (dateStr.includes('.000T')) {
+          const timePart = dateStr.split('.000T')[1];
+          return timePart || '00:00';
         }
-      ];
+        
+        // Handle standard format with one T separator
+        if (dateStr.includes('T')) {
+          const timePart = dateStr.split('T')[1].substring(0, 5);
+          return timePart || '00:00';
+        }
+        
+        // Direct time format
+        return dateStr;
+      };
       
-      const formattedFlights = sampleFlightData.map(flight => {
+      // Extract required fields or provide defaults
+      const departureTime = extractTime(flight.departure.datetime);
+      const arrivalTime = extractTime(flight.arrival.datetime);
+      
+      // Extract date parts
+      const departureDate = flight.departure.datetime.split('T')[0] || '';
+      const arrivalDate = flight.arrival.datetime.split('T')[0] || '';
+      
+      // Create stopDetails in the format expected by Flight interface
+      const stopDetails = flight.stops > 0 && flight.stopDetails ? flight.stopDetails.map((stop: string) => {
         return {
-          ...flight,
-          stopDetails: flight.stopDetails ? flight.stopDetails.map(airport => ({
-            airport,
-            city: airport,
-            duration: 'N/A'
-          })) : undefined
+          airport: stop,
+          city: getAirportCity(stop),
+          duration: "2h 0m" // Default duration as it's not in the API response
         };
-      });
+      }) : [];
       
-      setAllFlights(formattedFlights);
-      setLoading(false);
-      console.log('Sample flight data loaded:', formattedFlights.length, 'flights')
-    }
+      return {
+        id: flight.id,
+        airline: {
+          name: flight.airline.name,
+          logo: flight.airline.logo || `/airlines/${flight.airline.code.toLowerCase()}.png`,
+          code: flight.airline.code,
+          flightNumber: flight.airline.flightNumber
+        },
+        departure: {
+          airport: flight.departure.airport,
+          city: (flight.departure.airportName ? flight.departure.airportName.split(',')[0] : getAirportCity(flight.departure.airport)),
+          time: departureTime,
+          date: departureDate
+        },
+        arrival: {
+          airport: flight.arrival.airport,
+          city: (flight.arrival.airportName ? flight.arrival.airportName.split(',')[0] : getAirportCity(flight.arrival.airport)),
+          time: arrivalTime,
+          date: arrivalDate
+        },
+        duration: flight.duration,
+        stops: flight.stops,
+        stopDetails: stopDetails,
+        price: flight.price,
+        seatsAvailable: typeof flight.seatsAvailable === 'string' ? 
+          parseInt(flight.seatsAvailable.replace(/\D/g, '')) || 5 : 
+          flight.seatsAvailable
+      };
+    });
+  }
+
+  // Helper function to convert Flight data to FlightOffer format
+  function convertToFlightOffer(flight: Flight): any {
+    // Generate a fare class based on price range
+    const getFareClass = (price: number) => {
+      if (price > 80000) return "First";
+      if (price > 50000) return "Business";
+      if (price > 30000) return "Premium Economy";
+      return "Economy";
+    };
     
-    setLoading(false)
-  }, [])
+    // Generate price breakdown
+    const baseFare = Math.round(flight.price * 0.75);
+    const taxes = Math.round(flight.price * 0.15);
+    const fees = Math.round(flight.price * 0.1);
+    
+    const fareClass = getFareClass(flight.price);
+
+    return {
+      id: flight.id,
+      airline: flight.airline,
+      departure: {
+        airport: flight.departure.airport,
+        datetime: `${flight.departure.date.split('T')[0]}T${flight.departure.time}:00`,
+        airportName: flight.departure.city,
+      },
+      arrival: {
+        airport: flight.arrival.airport,
+        datetime: `${flight.arrival.date.split('T')[0]}T${flight.arrival.time}:00`,
+        airportName: flight.arrival.city,
+      },
+      duration: flight.duration,
+      stops: flight.stops,
+      stopDetails: flight.stopDetails ? flight.stopDetails.map(stop => stop.airport) : [],
+      price: flight.price,
+      currency: "USD",
+      seatsAvailable: flight.seatsAvailable,
+      
+      // Enhanced fare information
+      fare: {
+        fareBasisCode: `${flight.airline.code}${fareClass.substring(0, 1)}${Math.floor(Math.random() * 100)}`,
+        fareClass: fareClass,
+        fareName: `${fareClass} ${flight.price > 30000 ? "Flex" : "Standard"}`,
+        fareFamily: flight.price > 50000 ? "Premium" : "Standard",
+        rules: {
+          refundable: flight.price > 40000,
+          changeFee: flight.price <= 40000,
+          changeBeforeDeparture: {
+            allowed: true,
+            fee: flight.price > 40000 ? 0 : 15000,
+            currency: "USD"
+          },
+          changeAfterDeparture: {
+            allowed: flight.price > 30000,
+            fee: flight.price > 50000 ? 0 : 25000,
+            currency: "USD"
+          },
+          cancelBeforeDeparture: {
+            allowed: true,
+            fee: flight.price > 50000 ? 0 : 20000,
+            currency: "USD"
+          }
+        }
+      },
+      
+      // Enhanced baggage information
+      baggage: {
+        carryOn: {
+          description: "1 carry-on bag included",
+          quantity: 1,
+          weight: {
+            value: 7,
+            unit: "kg"
+          },
+          dimensions: "56 x 36 x 23 cm",
+          personalItem: {
+            description: "1 personal item (small bag)",
+            dimensions: "40 x 30 x 15 cm",
+            weight: {
+              value: 2,
+              unit: "kg"
+            }
+          }
+        },
+        checkedBaggage: {
+          description: `${fareClass === "Economy" ? "Not included" : "Included"} checked baggage allowance`,
+          pieces: fareClass === "Economy" ? 0 : (fareClass === "Premium Economy" ? 1 : 2),
+          weight: {
+            value: 23,
+            unit: "kg"
+          },
+          dimensions: "158 cm (length + width + height)",
+          policyType: "PIECE_BASED",
+          additionalBaggagePrices: [
+            {
+              amount: 5000,
+              currency: "USD"
+            }
+          ],
+          prepaidDiscount: {
+            percentage: 20,
+            description: "Save 20% when adding bags during booking"
+          }
+        }
+      },
+      
+      // Enhanced price breakdown
+      priceBreakdown: {
+        baseFare,
+        taxes,
+        fees,
+        totalPrice: flight.price,
+        currency: "USD",
+        taxBreakdown: [
+          { code: "YQ", description: "Fuel Surcharge", amount: Math.round(taxes * 0.6) },
+          { code: "XF", description: "Passenger Facility Charge", amount: Math.round(taxes * 0.2) },
+          { code: "AY", description: "Security Fee", amount: Math.round(taxes * 0.2) }
+        ],
+        feeBreakdown: [
+          { code: "OT", description: "Service Fee", amount: Math.round(fees * 0.8) },
+          { code: "XA", description: "Airport Fee", amount: Math.round(fees * 0.2) }
+        ]
+      },
+      
+      // Additional services
+      additionalServices: {
+        wifiAvailable: true,
+        powerOutlets: true,
+        entertainmentSystem: flight.price > 30000,
+        meals: {
+          available: true,
+          complimentary: flight.price > 30000,
+          description: flight.price > 50000 ? "Premium multi-course meals" : "Standard meals",
+          options: flight.price > 50000 ? ["Western", "Asian", "Vegetarian", "Religious"] : ["Standard", "Vegetarian"]
+        },
+        seatSelection: {
+          available: true,
+          complimentary: flight.price > 40000,
+          cost: 1000,
+          currency: "USD",
+          description: flight.price > 40000 ? "Complimentary seat selection" : "Seat selection available for purchase"
+        },
+        priorityBoarding: {
+          available: true,
+          complimentary: flight.price > 50000,
+          cost: 1500,
+          currency: "USD"
+        }
+      },
+      
+      // Aircraft information
+      aircraft: {
+        code: flight.airline.code === "LH" ? "32Q" : (flight.airline.code === "AC" ? "789" : "77W"),
+        name: flight.airline.code === "LH" ? "Airbus A321neo" : (flight.airline.code === "AC" ? "Boeing 787-9" : "Boeing 777-300ER")
+      }
+    };
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -555,7 +692,7 @@ export default function FlightsPage() {
                     </div>
                   ) : flights.length > 0 ? (
                     flights.map((flight) => (
-                      <FlightCard key={flight.id} flight={flight} />
+                      <EnhancedFlightCard key={flight.id} flight={convertToFlightOffer(flight)} />
                     ))
                   ) : (
                     <div className="rounded-lg border p-8 text-center">
@@ -622,4 +759,3 @@ export default function FlightsPage() {
     </div>
   )
 }
-

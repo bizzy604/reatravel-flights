@@ -12,17 +12,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-import { callVerteilAirShopping } from "@/lib/flight-api"
 import type { FlightSearchRequest } from "../types/flight-api";
-import { FlightCard } from "@/components/flight-card"
-import { Skeleton } from "@/components/ui/skeleton"
 
 // Constants moved outside the component
 const cabinTypes = [
   { value: "Y", label: "Economy" },
-  { value: "PREMIUM_ECONOMY", label: "Premium Economy" },
-  { value: "BUSINESS", label: "Business" },
-  { value: "FIRST", label: "First Class" },
+  { value: "W", label: "Premium Economy" },
+  { value: "C", label: "Business Class" },
+  { value: "F", label: "First Class" },
 ]
 
 const airports = [
@@ -72,8 +69,7 @@ export function FlightSearchForm() {
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
   const [results, setResults] = React.useState<any>(null)
-  const [rawApiResponse, setRawApiResponse] = React.useState<any>(null)
-  const [showRawApi, setShowRawApi] = React.useState(false)
+  const [meta, setMeta] = React.useState<any>(null)
 
   // Handlers for select changes
   const handleOriginChange = (value: string) => setOrigin(value) // Updated for Shadcn Select
@@ -171,6 +167,7 @@ export function FlightSearchForm() {
     e.preventDefault()
     setError(null)
     setResults(null)
+    setMeta(null)
     setLoading(true)
     
     // Validate required fields
@@ -254,271 +251,24 @@ export function FlightSearchForm() {
           },
         },
       }
-      console.log("Sending search request", payload)
       
-      const response = await fetch(`${window.location.origin}/api/flights/search-advanced`, {
+      // Send search request to backend
+      const response = await fetch('/api/flights/search-advanced', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
         cache: 'no-store',
       })
-      
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Search failed:', response.status, errorData);
         throw new Error(errorData.message || `Search failed: ${response.statusText}`);
       }
-      
-      const data = await response.json()
-      setRawApiResponse(data)
-      console.log("Raw API response:", data)
-      
-      // The API might return data in different structures, so we need to handle all possibilities
-      console.log("Full API response structure:", Object.keys(data));
-      
-      // First, check if we have the raw data structure
-      const rawData = data?.raw;
-      
-      // Get DataLists from the raw data
-      const dataLists = rawData?.DataLists || data?.DataLists || {};
-      console.log("DataLists found:", dataLists ? Object.keys(dataLists) : 'None');
-      
-      // Get flight segments
-      const flightSegmentList: any[] = dataLists?.FlightSegmentList?.FlightSegment || [];
-      console.log("Flight segments found:", flightSegmentList.length);
-      
-      // Get offers from the raw data
-      const offersGroup = rawData?.OffersGroup;
-      const airlineOffers = offersGroup?.AirlineOffers || [];
-      const airlineOffer = airlineOffers[0]?.AirlineOffer || [];
-      console.log("Airline offers found:", airlineOffer.length);
-      
-      // Pre-process lists into maps for faster lookups
-      const flightSegmentMap = new Map(flightSegmentList.map((seg: any) => [seg.SegmentKey, seg]));
-      
-      // Also map flight references
-      const flightList = dataLists?.FlightList?.Flight || [];
-      const flightMap = new Map(flightList.map((flight: any) => [flight.FlightKey, flight]));
-      console.log("Flights found:", flightList.length);
-      
-      if (airlineOffer.length === 0) {
-        console.warn("No AirlineOffers found in the response.");
-        setResults([]);
-        setError("No flights found for your search criteria. Please try different dates or airports.");
-        return;
-      }
-      
-      // Use the raw data directly since the API's optimizeFlightData function is failing
- 
-      const formattedResults = airlineOffer.map((offer: any) => {
-        const offerId = offer.OfferID?.value || `offer-${Math.random().toString(36).substr(2, 9)}`;
-        const price = offer.TotalPrice?.SimpleCurrencyPrice?.value || 0;
-
-        // Find associated flight segment references for this offer
-        let segmentRefs: string[] = [];
-        let flightKey: string = '';
-        
-        // First, try to get the flight reference
-        if (offer.PricedOffer?.Associations) {
-          const associations = Array.isArray(offer.PricedOffer.Associations) 
-            ? offer.PricedOffer.Associations 
-            : [offer.PricedOffer.Associations];
-            
-          for (const assoc of associations) {
-            // Get flight reference first
-            if (assoc.ApplicableFlight?.FlightReferences?.value) {
-              const flightRefs = Array.isArray(assoc.ApplicableFlight.FlightReferences.value)
-                ? assoc.ApplicableFlight.FlightReferences.value
-                : [assoc.ApplicableFlight.FlightReferences.value];
-                
-              flightKey = flightRefs[0]; // Take the first flight reference
-              console.log(`Found flight key for offer ${offerId}:`, flightKey);
-            }
-            
-            // Then get segment references
-            if (assoc.ApplicableFlight?.FlightSegmentReference) {
-              const refs = Array.isArray(assoc.ApplicableFlight.FlightSegmentReference)
-                ? assoc.ApplicableFlight.FlightSegmentReference
-                : [assoc.ApplicableFlight.FlightSegmentReference];
-                
-              segmentRefs = [...segmentRefs, ...refs.map((ref: any) => ref.ref || ref)];
-            }
-          }
-        }
-        
-        // If we have a flight key but no segment refs, try to get segment refs from the flight
-        if (flightKey && segmentRefs.length === 0) {
-          const flight = flightMap.get(flightKey);
-          // Use optional chaining and type assertion to safely access properties
-          const flightObj = flight as Record<string, any>;
-          if (flightObj?.SegmentReferences?.value) {
-            const segmentRefsValue = flightObj.SegmentReferences.value;
-            segmentRefs = Array.isArray(segmentRefsValue)
-              ? segmentRefsValue
-              : [segmentRefsValue];
-          }
-        }
-        
-        console.log(`Extracted segment refs for offer ${offerId}:`, segmentRefs);
-
-        // Lookup the actual segments
-        const segments = segmentRefs
-          .map((ref: string) => flightSegmentMap.get(ref))
-          .filter((seg: any) => !!seg); // Filter out nulls if ref not found
-          
-        console.log(`Found ${segments.length} segments for offer ${offerId}:`, segments);
-
-        let airlineInfo = { name: 'Airline N/A', logo: '/placeholder.svg', code: 'XX', flightNumber: '000' };
-        let departureInfo = { airport: origin, city: getCity(origin), time: '00:00', date: departDate?.toISOString().split('T')[0] || 'N/A' };
-        let arrivalInfo = { airport: destination, city: getCity(destination), time: '00:00', date: 'N/A' };
-        let totalDuration = "N/A"; // Default value
-        let stops = 0;
-        // Declare stop details array outside the if block so it's accessible in the return statement
-        const currentStopDetails: string[] = [];
-
-        if (segments.length > 0) {
-          const firstSegment = segments[0];
-          const lastSegment = segments[segments.length - 1];
-          stops = segments.length - 1; // Calculate stops
-
-          // Calculate Total Duration
-          let totalMinutes = 0;
-          segments.forEach((seg: any) => {
-            const durationStr = seg?.FlightDetail?.FlightDuration?.Value;
-            if (durationStr) {
-              totalMinutes += parseISODuration(durationStr);
-            }
-          });
-
-          if (totalMinutes > 0) {
-            const hours = Math.floor(totalMinutes / 60);
-            const minutes = totalMinutes % 60;
-            totalDuration = `${hours}h ${minutes}m`; // Format as Xh Ym
-          }
-          
-          console.log('Processing segments:', segments);
-          console.log('First segment:', firstSegment);
-          console.log('Last segment:', lastSegment);
-
-          // Extract stop details for connecting airports
-          if (stops > 0) {
-            // Add connecting airport codes to stopDetails
-            for (let i = 0; i < segments.length - 1; i++) {
-              let connectingAirport = null;
-              
-              // Try different paths to extract airport code
-              if (segments[i].Arrival?.AirportCode?.value) {
-                connectingAirport = segments[i].Arrival.AirportCode.value;
-              } else if (segments[i].Arrival?.AirportCode) {
-                connectingAirport = segments[i].Arrival.AirportCode;
-              }
-              
-              if (connectingAirport) {
-                currentStopDetails.push(connectingAirport);
-              }
-            }
-            
-            console.log(`Stop details for offer ${offerId}:`, currentStopDetails);
-          }
-
-          // Extract airline info from first segment - handle different API structures
-          console.log('First segment:', firstSegment);
-          
-          // Try different paths to extract airline code
-          let airlineCode = 'XX';
-          if (firstSegment.MarketingCarrier?.AirlineID?.value) {
-            airlineCode = firstSegment.MarketingCarrier.AirlineID.value;
-          } else if (firstSegment.MarketingCarrier?.AirlineID) {
-            airlineCode = firstSegment.MarketingCarrier.AirlineID;
-          }
-          
-          const nameFromSegment = firstSegment.MarketingCarrier?.Name;
-          const airlineName = nameFromSegment || `Airline ${airlineCode}`;
-
-          // Get flight number - try different paths
-          let flightNumber = '000';
-          if (firstSegment.MarketingCarrier?.FlightNumber?.value) {
-            flightNumber = firstSegment.MarketingCarrier.FlightNumber.value;
-          } else if (firstSegment.MarketingCarrier?.FlightNumber) {
-            flightNumber = firstSegment.MarketingCarrier.FlightNumber;
-          }
-
-          airlineInfo = {
-            name: airlineName,
-            logo: `/airlines/${airlineCode.toLowerCase()}.png`,
-            code: airlineCode,
-            flightNumber: flightNumber,
-          };
-
-          // Extract Departure Info from first segment - handle different API structures
-          let departureAirportCode = origin;
-          if (firstSegment.Departure?.AirportCode?.value) {
-            departureAirportCode = firstSegment.Departure.AirportCode.value;
-          } else if (firstSegment.Departure?.AirportCode) {
-            departureAirportCode = firstSegment.Departure.AirportCode;
-          }
-          
-          const departureTime = firstSegment.Departure?.Time || '00:00';
-          const departureDate = firstSegment.Departure?.Date || departDate?.toISOString().split('T')[0] || 'N/A';
-          
-          departureInfo = {
-            airport: departureAirportCode,
-            city: getCity(departureAirportCode),
-            time: departureTime.substring(0, 5), // HH:MM format
-            date: departureDate,
-          };
-
-          // Extract Arrival Info from last segment - handle different API structures
-          let arrivalAirportCode = destination;
-          if (lastSegment.Arrival?.AirportCode?.value) {
-            arrivalAirportCode = lastSegment.Arrival.AirportCode.value;
-          } else if (lastSegment.Arrival?.AirportCode) {
-            arrivalAirportCode = lastSegment.Arrival.AirportCode;
-          }
-          
-          const arrivalTime = lastSegment.Arrival?.Time || '00:00';
-          const arrivalDate = lastSegment.Arrival?.Date || 'N/A';
-          
-          arrivalInfo = {
-            airport: arrivalAirportCode,
-            city: getCity(arrivalAirportCode),
-            time: arrivalTime.substring(0, 5), // HH:MM format
-            date: arrivalDate,
-          };
-          
-          // If we have a flight key, try to get journey information
-          if (flightKey) {
-            const flight = flightMap.get(flightKey);
-            // Use optional chaining and type assertion to safely access properties
-            const flightObj = flight as Record<string, any>;
-            if (flightObj?.Journey?.Time && typeof flightObj.Journey.Time === 'string') {
-              // Override the calculated duration with the one from the flight
-              totalDuration = flightObj.Journey.Time.replace('PT', '').replace('H', 'h ').replace('M', 'm');
-            }
-          }
-        };
-
-        // Format the price as a number
-        const numericPrice = parseInt(price, 10) || 0;
-        
-        return {
-          id: offerId,
-          airline: airlineInfo,
-          departure: departureInfo,
-          arrival: arrivalInfo,
-          duration: totalDuration,
-          stops: stops,
-          stopDetails: currentStopDetails, // Use extracted stop airport codes
-          price: numericPrice,
-          seatsAvailable: 9, // Default to 9 seats available
-          currency: offer.TotalPrice?.SimpleCurrencyPrice?.Code || 'USD'
-        };
-      });
-
-      // Store the formatted results in state instead of redirecting
-      setResults(formattedResults)
+      // Update state with processed results
+      const { processed } = await response.json()
+      setResults(processed.flights)
+      setMeta(processed.meta)
+      setLoading(false)
     } catch (error: any) {
       console.error("Error searching flights", error)
       setError(error.message || "Failed to search flights")
@@ -728,12 +478,6 @@ export function FlightSearchForm() {
              {/* Placeholder for grid alignment */}
              <div className="sm:col-span-1"></div>
              
-             {/* Add Another Flight Button */} 
-             <div className="w-full sm:col-span-1">
-               <Button variant="outline" className="w-full">
-                 + Add Another Flight
-               </Button>
-             </div>
            </div>
 
            <div className="mt-4 flex justify-center">
@@ -745,66 +489,6 @@ export function FlightSearchForm() {
                {loading ? "Searching..." : "Search Flights"}
              </Button>
            </div>
-           
-           {error && (
-             <div className="mt-4 text-center text-red-500">{error}</div>
-           )}
-           {loading && (
-             <div className="mt-6 space-y-4">
-               {[...Array(3)].map((_, i) => (
-                 <Skeleton key={i} className="h-48 w-full rounded-lg" />
-               ))}
-             </div>
-           )}
-           {results && results.length > 0 && (
-             <div className="mt-6 space-y-4">
-               <div className="flex items-center justify-between">
-                 <p className="text-sm text-muted-foreground">
-                   Showing <strong>{results.length}</strong> flights
-                 </p>
-                 <button
-                   type="button"
-                   className="text-xs underline ml-2"
-                   onClick={() => setShowRawApi((v) => !v)}
-                 >
-                   {showRawApi ? 'Hide' : 'Show'} Raw API Response
-                 </button>
-               </div>
-               <div className="space-y-4">
-                 {results.map((flight: any) => (
-                   <FlightCard key={flight.id} flight={flight} />
-                 ))}
-               </div>
-               {showRawApi && rawApiResponse && (
-                 <div className="mt-6 p-4 bg-gray-100 rounded-lg overflow-x-auto">
-                   <h4 className="font-semibold mb-2">Raw API Response</h4>
-                   <pre className="text-xs max-h-96 overflow-auto whitespace-pre-wrap">
-                     {JSON.stringify(rawApiResponse, null, 2)}
-                   </pre>
-                 </div>
-               )}
-             </div>
-           )}
-           {results && results.length === 0 && (
-             <div className="mt-6 text-center text-muted-foreground">
-               No flights found for your search criteria
-               <button
-                 type="button"
-                 className="text-xs underline ml-2"
-                 onClick={() => setShowRawApi((v) => !v)}
-               >
-                 {showRawApi ? 'Hide' : 'Show'} Raw API Response
-               </button>
-               {showRawApi && rawApiResponse && (
-                 <div className="mt-4 p-4 bg-gray-100 rounded-lg overflow-x-auto">
-                   <h4 className="font-semibold mb-2">Raw API Response</h4>
-                   <pre className="text-xs max-h-96 overflow-auto whitespace-pre-wrap">
-                     {JSON.stringify(rawApiResponse, null, 2)}
-                   </pre>
-                 </div>
-               )}
-             </div>
-           )}
          </TabsContent>
        </Tabs>
      </div>
